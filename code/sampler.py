@@ -1,5 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import importlib
+import solvers
+importlib.reload(solvers);
 
 def hello():
     print("Hello from the sampler file!")
@@ -17,21 +20,38 @@ def V_prime(x, type = "quartic"):
             return x**3
         case _:
             raise ValueError(f"Potential type '{type}' not found.")
+        
+def V_double_prime(x, type = "quartic"):
+    match type:
+        case "quartic":
+            return 3*(x**2)
+        case _:
+            raise ValueError(f"Potential type '{type}' not found.")
 
-def update(lambda_n, v, v_prime, dt, N, method = "tamed"):
+def update(lambda_n, potential, dt, N, method = "tamed"):
     """ 
-    Potentials v and v_prime have already been evaluated at lambda_n.
+    Potentials are not evaluated yet.
     Update according to each method and return next lambda.
     """
 
     if method not in ["euler", "tamed", "implicit"]:
         raise ValueError(f"Update method {method} not found.")
+    
+    noise_scale = np.sqrt(2*dt / (2*N))
+    noise = np.random.normal(0, 1, N)
+    v_prime = V_prime(lambda_n, type = potential)
+
 
     if (method == "implicit"):
-        raise NotImplementedError("Implicit step.")
-    else:
-        noise_scale = np.sqrt(2.0*dt / (2*N))
+        v_n = lambda_n + noise_scale*noise
+        v_n = np.sort(v_n) # In case noise causes a collision.
+        
+        # Implicit update: Newton's solver for now.
+        # NOTE Will add other solvers later.
+        lambda_next = solvers.newton_update(v_n, dt, N, potential = potential)
+        return lambda_next
 
+    else:
         # Computes pairwise distance matrix, then fill diags with inf: 1/inf = 0.
         diff = np.subtract.outer(lambda_n, lambda_n)
         np.fill_diagonal(diff, np.inf)
@@ -39,10 +59,10 @@ def update(lambda_n, v, v_prime, dt, N, method = "tamed"):
 
         if (method == "tamed"):
             tamed_potential = v_prime / (2 + dt*np.abs(v_prime))
-            lambda_next = lambda_n + (coulomb_interaction - tamed_potential)*dt + noise_scale*np.random.normal(0, 1, N)
+            lambda_next = lambda_n + (coulomb_interaction - tamed_potential)*dt + noise_scale*noise
             return lambda_next
         else:
-            lambda_next = lambda_n + (coulomb_interaction - 1/2*v_prime)*dt + noise_scale*np.random.normal(0, 1, N)
+            lambda_next = lambda_n + (coulomb_interaction - 1/2*v_prime)*dt + noise_scale*noise
             return lambda_next
 
 def stochastic_sampler(N, T, num_trials = 500, potential = "quartic", method = "tamed"):
@@ -58,7 +78,7 @@ def stochastic_sampler(N, T, num_trials = 500, potential = "quartic", method = "
 
     # NOTE More dynamic dt updates with scheme type? tamed is 1/N^2
     # but implicit might by 1/N?
-    dt = 1.0 / (N**2)
+    dt = 1.0/N if method == "implicit" else 1.0/(N**2) 
     num_steps = int(T/dt)
 
     # Store final positions for each trial.
@@ -74,9 +94,7 @@ def stochastic_sampler(N, T, num_trials = 500, potential = "quartic", method = "
         # NOTE Can modify to save updates if wanted.
         for _ in range(num_steps):
             cur_lambda = np.copy(lambda_n)
-            v = V(cur_lambda, type = potential)
-            v_prime = V_prime(cur_lambda, type = potential)
-            lambda_n = update(cur_lambda, v, v_prime, dt, N, method = method)
+            lambda_n = update(cur_lambda, potential, dt, N, method = method)
 
         final_particles[trial, :] = lambda_n
 

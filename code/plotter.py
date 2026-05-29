@@ -5,7 +5,7 @@ import importlib
 import sampler
 importlib.reload(sampler);
 
-def run_experiment(N, T, num_trials, potential, method = "tamed", bins = 100, save = False):
+def run_experiment(N, T, num_trials, potential, method = "tamed", bins = 100, crop = True, save = False):
     """ 
     
     """
@@ -21,9 +21,10 @@ def run_experiment(N, T, num_trials, potential, method = "tamed", bins = 100, sa
             edgecolor = "black", label = f"N = {N} over {num_trials} trials")
 
     ax.plot(s_vals, theoretical_density, 'r--', lw = 2, label = "Theoretical Density")
-    # ax.grid(True, alpha = 0.3)
-    #ax.set_xlim(-2.35, 2.35)
+    ax.grid(True, alpha = 0.3)
     ax.set_title(f"DBM ({method}) for N = {N}, T = {T}, over {num_trials} trials.", fontsize = 14)
+    if (crop):
+        ax.set_xlim(-2.35, 2.35)
 
     # plt.legend(fontsize = 12)
     print(f"With N = {N} over {num_trials} trials with {potential} potential run for T = {T}.")
@@ -34,3 +35,5 @@ def run_experiment(N, T, num_trials, potential, method = "tamed", bins = 100, sa
         plt.close()
 
     plt.show()
+
+    
