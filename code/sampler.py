@@ -11,6 +11,8 @@ def V(x, type = "quartic"):
     match type:
         case "quartic":
             return x**4 / 4
+        case "quad-quartic":
+            return x**2/2 + x**4/4
         case _:
             raise ValueError(f"Potential type '{type}' not found.")
         
@@ -18,6 +20,8 @@ def V_prime(x, type = "quartic"):
     match type:
         case "quartic":
             return x**3
+        case "quad-quartic":
+            return x + x**3
         case _:
             raise ValueError(f"Potential type '{type}' not found.")
         
@@ -25,6 +29,8 @@ def V_double_prime(x, type = "quartic"):
     match type:
         case "quartic":
             return 3*(x**2)
+        case "quad-quartic":
+            return 1 + 3*(x**2)
         case _:
             raise ValueError(f"Potential type '{type}' not found.")
 
@@ -65,20 +71,19 @@ def update(lambda_n, potential, dt, N, method = "tamed"):
             lambda_next = lambda_n + (coulomb_interaction - 1/2*v_prime)*dt + noise_scale*noise
             return lambda_next
 
-def stochastic_sampler(N, T, num_trials = 500, potential = "quartic", method = "tamed"):
+def stochastic_sampler(N, T, dt, *, num_trials = 500, potential = "quartic", method = "tamed"):
     """ 
     Simulates DBM using the tamed scheme as described by Li and Menon (2013).
     Input:
         N (int): system dimension.
         T (float): final time.
+        dt (float): step size; 1/N^2 for euler/tamed and 1/N for implicit.
         num_trials (int): number of independent trials (/trajectories).
         potential_type (str): type of potential, e.g. quartic.
         scheme (str): update scheme e.g. tamed, euler, implicit.
     """
 
-    # NOTE More dynamic dt updates with scheme type? tamed is 1/N^2
-    # but implicit might by 1/N?
-    dt = 1.0/N if method == "implicit" else 1.0/(N**2) 
+    # dt = 1.0/N if method == "implicit" else 1.0/(N**2) 
     num_steps = int(T/dt)
 
     # Store final positions for each trial.
@@ -129,3 +134,4 @@ def theoretical_density(s, q = 1.0, g = 1.0):
         density[condition] = 1/(2*np.pi)*(2*g*(a**2) + g*(s_valid**2))*np.sqrt(4*(a**2) - s_valid**2)
 
     return density
+
