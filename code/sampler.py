@@ -104,34 +104,3 @@ def stochastic_sampler(N, T, dt, *, num_trials = 500, potential = "quartic", met
         final_particles[trial, :] = lambda_n
 
     return final_particles.flatten()
-
-
-def theoretical_density(s, q = 1.0, g = 1.0):
-    """
-    See (2.1), (2.2), (2.3) in Li and Menon.
-    Gives the exact density for different potentials, if mixed assumes x^2/2 + gx^4/4 
-    Input:
-        s (ndarray): range.
-        g (float): quartic coefficient gx^4/4
-    """
-
-    density = np.zeros_like(s)
-    
-    if (q == 1.0):
-        # (2.2)
-        a = np.sqrt((np.sqrt(1+12*g) - 1) / (6*g))
-        condition = np.abs(s) <= 2*a
-
-        # Avoid sqrt runtime errors.
-        s_valid = s[condition]
-        density[condition] = 1/(2*np.pi)*(1+2*g*(a**2) + g*(s_valid**2))*np.sqrt(4*(a**2) - s_valid**2)
-
-    else:
-        a = (3.0*g)**(-1/4)
-        condition = np.abs(s) <= 2*a
-
-        s_valid = s[condition]
-        density[condition] = 1/(2*np.pi)*(2*g*(a**2) + g*(s_valid**2))*np.sqrt(4*(a**2) - s_valid**2)
-
-    return density
-

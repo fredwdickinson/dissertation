@@ -38,7 +38,7 @@ def plot_results(potential, methods, results):
     s_vals = np.linspace(-2.5, 2.5, 500)
     density = sampler.theoretical_density(s_vals, q, g)
 
-    fig, axes = plt.subplots(1, len(methods), figsize = (21, 5))
+    fig, axes = plt.subplots(1, len(methods), figsize = (7*len(methods), 5))
     axes = np.atleast_1d(axes)
     for method, res, ax in zip(methods, results, axes):
         plot(res, s_vals, density, title = method.capitalize(), ax = ax)
@@ -46,7 +46,7 @@ def plot_results(potential, methods, results):
     plt.show()
 
 def plot(results, density_range, density, *, 
-                 bins = 50, title = None, ax = None, plot = False, save = False, crop = True):
+                 bins = 20, title = None, ax = None, plot = False, save = False, crop = True):
     """ 
     
     """
@@ -54,16 +54,15 @@ def plot(results, density_range, density, *,
     if (ax == None):
         fig, ax = plt.subplots()
 
-    ax.hist(results, bins = bins, density = True, alpha = 0.75, color = "steelblue", edgecolor = "none")
+    # NOTE Work with clipped results for better bin resolution, still print the min/max in infos.
+    if (crop):
+        clipped_results = np.clip(results, a_min = np.min(density_range), a_max = np.max(density_range))
+
+    ax.hist(results, bins = bins, density = True, alpha = 0.75, color = "steelblue", edgecolor = "black")
     ax.plot(density_range, density, 'r--', lw = 2)
 
-    ax.grid(True, alpha = 0.3)
+    # ax.grid(True, alpha = 0.3)
     ax.set_title(title)
-    ax.set_xlim(-2.35, 2.35)
-
-    if (not crop):
-        ax.autoscale()
-        ax.set_ylim(0, 0.005)
 
     if (save):
         randint = np.random.randint(1, 999)
