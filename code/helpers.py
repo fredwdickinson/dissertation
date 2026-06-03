@@ -3,9 +3,8 @@ import matplotlib.pyplot as plt
 import importlib
 import time 
 
-import sampler
-importlib.reload(sampler);
-
+import sampler, densities
+importlib.reload(sampler); importlib.reload(densities);
 
 def get_results(N, T, num_trials, potential, *, methods = None):
     results = []
@@ -36,7 +35,7 @@ def plot_results(potential, methods, results):
     g = 1
 
     s_vals = np.linspace(-2.5, 2.5, 500)
-    density = sampler.theoretical_density(s_vals, q, g)
+    density = densities.theoretical_density(s_vals, q, g)
 
     fig, axes = plt.subplots(1, len(methods), figsize = (7*len(methods), 5))
     axes = np.atleast_1d(axes)
