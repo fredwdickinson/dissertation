@@ -44,12 +44,13 @@ def plot_results(potential, methods, results):
 
     plt.show()
 
+#
+#
+#
+
 def plot(results, density_range, density, *, 
                  bins = 20, title = None, ax = None, plot = False, save = False, crop = True):
-    """ 
-    
-    """
-
+    #
     if (ax == None):
         fig, ax = plt.subplots()
 

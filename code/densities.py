@@ -6,13 +6,21 @@ def numerical_int(vals, grid):
     dx = grid[1] - grid[0]
     return np.sum(vals) * dx
 
-def orthogonal_polys(N, potential, grid):
+def get_potential(type):
+    if (type == "quad-quartic"):
+        return lambda x: x**2/2 + x**4/4
+    elif (type == "quartic"):
+        return lambda x: x**4/4
+    else:
+        raise ValueError(f"Potential {type} not found.")
+
+def orthogonal_polys(N, potential_func, grid):
     """ 
     Builds N monic, orthogonal polynomials w.r.t. exp(-NV) over a
     grid through the Gran-Schmidt process.
     """
 
-    weight = np.exp(-N*potential(grid))
+    weight = np.exp(-N*potential_func(grid))
     pis = np.zeros((N, len(grid)))
     c_sqrs = np.zeros(N)
 
@@ -40,14 +48,14 @@ def orthogonal_polys(N, potential, grid):
 
     return pis, c_sqrs
 
-def construct_kernel(N, potential, grid, pis, c_sqrs):
+def construct_kernel(N, potential_func, grid, pis, c_sqrs):
     """ 
     Construct K_N by (a) calculating the wavefunctions and then (b)
     taking the outer product --- see Li and Menon.
     """
 
     # NOTE Here there's a /2 in the Gibbs factor.
-    weight = np.exp(-N*potential(grid) / 2.0)
+    weight = np.exp(-N*potential_func(grid) / 2.0)
     phis = np.zeros((N, len(grid)))
 
     for k in range(N):
@@ -56,6 +64,44 @@ def construct_kernel(N, potential, grid, pis, c_sqrs):
     # Evaluate sum as matrix multiplication:
     # (grid, N) * (N, grid): rows (r) x cols (s) --> (grid, grid).
     return phis.T @ phis
+
+def compute_exact_cdf(N, potential, grid, cdf_tol = 0.05):
+    """ 
+    Construct true finite_N cdf F_N(x) from K_N (construct_kernel above).
+    See (2.5) in Li and Menon.
+    """
+
+    potential_func = get_potential(potential)
+    pis, c_sqrs = orthogonal_polys(N, potential_func, grid)
+    K_N = construct_kernel(N, potential_func, grid, pis, c_sqrs)
+    rho_N = np.diagonal(K_N) / N 
+
+    dx = grid[1] - grid[0]
+    F_exact = np.cumsum(rho_N)*dx
+
+    # For floating point/discretisation errors.
+    diff = np.abs(F_exact[-1] - 1)
+    if (diff > cdf_tol):
+        raise RuntimeWarning(f"True CDF more than {cdf_tol} from 1.")
+    
+    F_exact = F_exact / F_exact[-1]
+    return F_exact
+
+
+def compute_empirical_cdf(particles, grid):
+    """ 
+    Compute empirircal distribution from particle positions,
+        F_{n, M} = 1/NM sum_M sum_N ind(lambda_emp <= lambda).
+
+    Particles is a flatten array of ALL particles across all trials (N*M length).
+    """
+
+    sorted_particles = np.sort(particles)
+    # https://numpy.org/devdocs/reference/generated/numpy.searchsorted.html
+    counts = np.searchsorted(sorted_particles, grid, side = "right")
+
+    F_emp = counts / len(sorted_particles)
+    return F_emp
 
 def theoretical_density(s, q = 1.0, g = 1.0):
     """
@@ -85,3 +131,18 @@ def theoretical_density(s, q = 1.0, g = 1.0):
         density[condition] = 1/(2*np.pi)*(2*g*(a**2) + g*(s_valid**2))*np.sqrt(4*(a**2) - s_valid**2)
 
     return density
+
+def compute_distance(P, Q, grid, distance_type = "ks"):
+    """
+    Computes the distance between P and Q (e.g. empirircal vs exact CDFs).
+    NOTE might implement Wasserstein, KL, ... or can use SciPy's versions.
+    """
+
+    abs_difference = np.abs(P - Q)
+    if (distance_type == "ks"):
+        distance = np.max(abs_difference)
+    elif (distance_type == "kl"):
+        distance = 23
+        raise NotImplementedError("Implement KL (densities.py).")
+
+    return distance

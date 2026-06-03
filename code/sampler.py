@@ -1,8 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import importlib
-import solvers
-importlib.reload(solvers);
+import solvers, densities
+importlib.reload(solvers); importlib.reload(densities);
 
 def hello():
     print("Hello from the sampler file!")
@@ -70,10 +70,16 @@ def update(lambda_n, potential, dt, N, method = "tamed"):
         else:
             lambda_next = lambda_n + (coulomb_interaction - 1/2*v_prime)*dt + noise_scale*noise
             return lambda_next
+        
+#
+#
+#
 
-def stochastic_sampler(N, T, dt, *, num_trials = 500, potential = "quartic", method = "tamed"):
+def stochastic_sampler(N, T, dt, *, num_trials = 500, potential = "quartic", method = "tamed",
+                       track_distance = False, distance_type = "ks"):
     """ 
     Simulates DBM using the tamed scheme as described by Li and Menon (2013).
+    Refactored to track particles (time is outer loop).
     Input:
         N (int): system dimension.
         T (float): final time.
@@ -83,24 +89,39 @@ def stochastic_sampler(N, T, dt, *, num_trials = 500, potential = "quartic", met
         scheme (str): update scheme e.g. tamed, euler, implicit.
     """
 
-    # dt = 1.0/N if method == "implicit" else 1.0/(N**2) 
     num_steps = int(T/dt)
 
-    # Store final positions for each trial.
-    final_particles = np.zeros((num_trials, N))
-
+    # Starting eigenvalues according to Gaussian eigenvalues.
+    # Div by 2 is for half sum, by rootN for spectrm growth O(rootN).
+    particles = np.zeros((num_trials, N))
     for trial in range(num_trials):
-        # Choose initial vals accoridng to Gaussian eigenvalues.
-        # Div by 2 is for half sum, by rootN for spectrum growth O(rootN).
         A = np.random.normal(0, 1, (N, N)) + 1j*np.random.normal(0, 1, (N, N))
         M = (A + A.conj().T) / (2.0*np.sqrt(N))
-        lambda_n = np.linalg.eigvalsh(M)
+        particles[trial, :] = np.linalg.eigvalsh(M)
 
-        # NOTE Can modify to save updates if wanted.
-        for _ in range(num_steps):
-            cur_lambda = np.copy(lambda_n)
-            lambda_n = update(cur_lambda, potential, dt, N, method = method)
+    if (track_distance):
+        # Exact target CDF F_N.
+        grid = np.linspace(-3, 3, 1000)
+        history_times = []; history_distances = [];
+        F_exact = densities.compute_exact_cdf(N, potential, grid)
+        check_interval = max(1, num_steps // 240)  # NOTE can change to be more dynamic in N e.g. for 1/N vs 1/N^2 dt.
+        
+    # Loop changed: now update all trials at once for each step.
+    for step in range(num_steps):
+        cur_time = step*dt
+        for trial in range(num_trials):
+            particles[trial, :] = update(particles[trial, :], potential, dt, N, method = method)
 
-        final_particles[trial, :] = lambda_n
+        if (track_distance) and (step % check_interval == 0):
+            # Check every check_interval steps: calculate emp cdf, distance, store.
+            F_emp = densities.compute_empirical_cdf(particles.flatten(), grid)
+            distance = densities.compute_distance(F_emp, F_exact, grid, distance_type = distance_type)
+            history_times.append(cur_time)
+            history_distances.append(distance)
 
-    return final_particles.flatten()
+    # 
+    if (track_distance):
+        return particles.flatten(), np.array(history_times), np.array(history_distances)
+    
+    return particles.flatten()
+
