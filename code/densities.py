@@ -11,6 +11,8 @@ def get_potential(type):
         return lambda x: x**2/2 + x**4/4
     elif (type == "quartic"):
         return lambda x: x**4/4
+    elif (type == "quadratic"):
+        return lambda x: x**2/2
     else:
         raise ValueError(f"Potential {type} not found.")
 
@@ -113,9 +115,10 @@ def theoretical_density(s, q = 1.0, g = 1.0):
     """
 
     density = np.zeros_like(s)
+    q = float(q); g = float(g);
     
-    if (q == 1.0):
-        # (2.2)
+    if (q == 1.0 and g > 0):
+        # (2.2), mixed case.
         a = np.sqrt((np.sqrt(1+12*g) - 1) / (6*g))
         condition = np.abs(s) <= 2*a
 
@@ -123,7 +126,15 @@ def theoretical_density(s, q = 1.0, g = 1.0):
         s_valid = s[condition]
         density[condition] = 1/(2*np.pi)*(1+2*g*(a**2) + g*(s_valid**2))*np.sqrt(4*(a**2) - s_valid**2)
 
-    else:
+    elif (g == 0) and (q == 1):
+        # Pure quadratic case.
+        R = 2.0
+        condition = np.abs(s) <= R
+        s_valid = s[condition]
+        density[condition] = 2/(np.pi*(R**2))*np.sqrt((R**2) - (s_valid**2))
+        
+    else:   
+        # Pure quartic case.
         a = (3.0*g)**(-1/4)
         condition = np.abs(s) <= 2*a
 
