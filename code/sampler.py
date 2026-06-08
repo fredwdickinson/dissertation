@@ -66,6 +66,11 @@ def update(lambda_n, potential, dt, N, method = "tamed"):
         if (method == "tamed"):
             tamed_potential = v_prime / (2 + dt*np.abs(v_prime))
             lambda_next = lambda_n + (coulomb_interaction - tamed_potential)*dt + noise_scale*noise
+
+            # if np.any(np.diff(lambda_next) <= 0):
+            #    print("Particles have crossed in the tamed scheme!")
+            #    print(lambda_next)
+            
             return lambda_next
         else:
             lambda_next = lambda_n + (coulomb_interaction - 1/2*v_prime)*dt + noise_scale*noise
