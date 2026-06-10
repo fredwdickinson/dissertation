@@ -81,7 +81,8 @@ def update(lambda_n, potential, dt, N, method = "tamed"):
 #
 
 def stochastic_sampler(N, T, dt, *, num_trials = 500, potential = "quartic", method = "tamed",
-                       track_distance = False, distance_types = ["ks"]):
+                       track_distance = False, distance_types = ["ks"],
+                       track_crossing = False, T_star = 0, cross_dts = []):
     """ 
     Simulates DBM using the tamed scheme as described by Li and Menon (2013).
     Refactored to track particles (time is outer loop).
@@ -92,6 +93,8 @@ def stochastic_sampler(N, T, dt, *, num_trials = 500, potential = "quartic", met
         num_trials (int): number of independent trials (/trajectories).
         potential_type (str): type of potential, e.g. quartic.
         scheme (str): update scheme e.g. tamed, euler, implicit.
+    
+    Added track_distance/distance_types and check_crossing/T_star.
     """
 
     num_steps = int(T/dt)
@@ -111,9 +114,21 @@ def stochastic_sampler(N, T, dt, *, num_trials = 500, potential = "quartic", met
         check_interval = max(1, num_steps // 240)  # NOTE can change to be more dynamic in N e.g. for 1/N vs 1/N^2 dt.
         history_times = [[] for i in range(len(distance_types))]
         history_distances = [[] for i in range(len(distance_types))]
+
+    # Step to check crossing at.
+    target_step = int(T_star / dt)
         
     # Loop changed: now update all trials at once for each step.
     for step in range(num_steps):
+        # Do crossing checks if running for that.
+        if (track_crossing and step == target_step):
+            update_params = [potential, N, method]
+            if (len(cross_dts) < 1):
+                raise ValueError("Provide range of dts to check crossing at.")
+            
+            crossings = check_crossing(particles.copy(), num_trials, cross_dts, update_params)
+            return crossings
+        
         cur_time = step*dt
         for trial in range(num_trials):
             particles[trial, :] = update(particles[trial, :], potential, dt, N, method = method)
@@ -132,3 +147,25 @@ def stochastic_sampler(N, T, dt, *, num_trials = 500, potential = "quartic", met
     
     return particles.flatten()
 
+# 
+
+def check_crossing(particles, trials, dts, update_params):
+    # 
+    crosses_by_dt = np.zeros_like(dts, dtype = float)
+    potential, N, method = update_params
+    row_idx, col_idx = np.triu_indices(N, k = 1) # Upper triangular indices.
+
+    for j, dt in enumerate(dts):
+        for trial in range(trials):
+            # Creates matrix for difference between particle (ij) (for that trial). 
+            diff_before = np.subtract.outer(particles[trial, :], particles[trial, :])
+            new_particles = update(particles[trial, :], dt = dt, potential = potential, N = N, method = method)
+            diff_after = np.subtract.outer(new_particles, new_particles)
+
+            signs_before = np.sign(diff_before[row_idx, col_idx])
+            signs_after = np.sign(diff_after[row_idx, col_idx])
+
+            if np.any(signs_before * signs_after <= 0):
+                crosses_by_dt[j] += 1
+    
+    return crosses_by_dt
