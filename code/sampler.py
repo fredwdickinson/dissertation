@@ -81,7 +81,7 @@ def update(lambda_n, potential, dt, N, method = "tamed"):
 #
 
 def stochastic_sampler(N, T, dt, *, num_trials = 500, potential = "quartic", method = "tamed",
-                       track_distance = False, distance_type = "ks"):
+                       track_distance = False, distance_types = ["ks"]):
     """ 
     Simulates DBM using the tamed scheme as described by Li and Menon (2013).
     Refactored to track particles (time is outer loop).
@@ -107,9 +107,10 @@ def stochastic_sampler(N, T, dt, *, num_trials = 500, potential = "quartic", met
     if (track_distance):
         # Exact target CDF F_N.
         grid = np.linspace(-3, 3, 1000)
-        history_times = []; history_distances = [];
         F_exact = densities.compute_exact_cdf(N, potential, grid)
         check_interval = max(1, num_steps // 240)  # NOTE can change to be more dynamic in N e.g. for 1/N vs 1/N^2 dt.
+        history_times = [[] for i in range(len(distance_types))]
+        history_distances = [[] for i in range(len(distance_types))]
         
     # Loop changed: now update all trials at once for each step.
     for step in range(num_steps):
@@ -119,10 +120,11 @@ def stochastic_sampler(N, T, dt, *, num_trials = 500, potential = "quartic", met
 
         if (track_distance) and (step % check_interval == 0):
             # Check every check_interval steps: calculate emp cdf, distance, store.
-            F_emp = densities.compute_empirical_cdf(particles.flatten(), grid)
-            distance = densities.compute_distance(F_emp, F_exact, grid, distance_type = distance_type)
-            history_times.append(cur_time)
-            history_distances.append(distance)
+            for j, distance_type in enumerate(distance_types):
+                F_emp = densities.compute_empirical_cdf(particles.flatten(), grid)
+                distance = densities.compute_distance(F_emp, F_exact, grid, distance_type = distance_type)
+                history_times[j].append(cur_time)
+                history_distances[j].append(distance)
 
     # 
     if (track_distance):

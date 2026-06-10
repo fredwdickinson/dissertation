@@ -143,7 +143,7 @@ def theoretical_density(s, q = 1.0, g = 1.0):
 
     return density
 
-def compute_distance(P, Q, grid, distance_type = "ks"):
+def compute_distance(P, Q, grid, distance_type = "ks", p = 1):
     """
     Computes the distance between P and Q (e.g. empirircal vs exact CDFs).
     NOTE might implement Wasserstein, KL, ... or can use SciPy's versions.
@@ -152,8 +152,24 @@ def compute_distance(P, Q, grid, distance_type = "ks"):
     abs_difference = np.abs(P - Q)
     if (distance_type == "ks"):
         distance = np.max(abs_difference)
+        return distance
+
+    elif (distance_type == "wasserstein"):
+        if (p == 1):
+            # Special case: just integration.
+            dx = grid[1] - grid[0]
+            distance = np.sum(abs_difference)*dx
+            return distance
+        else:
+            # Estimate inverse CDF by interpolating for range of p's.
+            p_grid = np.linspace(0, 1, 2*len(grid))
+            inv_P = np.interp(p_grid, P, grid)
+            inv_Q = np.interp(p_grid, Q, grid)
+
+            integral = np.sum(np.abs(inv_P - inv_Q)**p)*(p_grid[1] - p_grid[0])
+            distance = integral**(1.0/p)
+            return distance
+
     elif (distance_type == "kl"):
         distance = 23
         raise NotImplementedError("Implement KL (densities.py).")
-
-    return distance
