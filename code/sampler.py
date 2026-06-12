@@ -34,7 +34,7 @@ def V_double_prime(x, type = "quartic"):
         case _:
             raise ValueError(f"Potential type '{type}' not found.")
 
-def update(lambda_n, potential, dt, N, method = "tamed"):
+def update(lambda_n, potential, dt, N, method = "tamed", track_newton = False):
     """ 
     Potentials are not evaluated yet.
     Update according to each method and return next lambda.
@@ -42,6 +42,7 @@ def update(lambda_n, potential, dt, N, method = "tamed"):
 
     if method not in ["euler", "tamed", "implicit"]:
         raise ValueError(f"Update method {method} not found.")
+    
     
     noise_scale = np.sqrt(2*dt / (2*N))
     noise = np.random.normal(0, 1, N)
@@ -54,8 +55,12 @@ def update(lambda_n, potential, dt, N, method = "tamed"):
         
         # Implicit update: Newton's solver for now.
         # NOTE Will add other solvers later.
-        lambda_next = solvers.newton_update(v_n, dt, N, potential = potential)
-        return lambda_next
+        if (track_newton):
+            lambda_next, newton_iters = solvers.newton_update(v_n, dt, N, potential = potential, track_steps = True)
+            return lambda_next, newton_iters
+        else:
+            lambda_next = solvers.newton_update(v_n, dt, N, potential = potential)
+            return lambda_next
 
     else:
         # Computes pairwise distance matrix, then fill diags with inf: 1/inf = 0.
@@ -82,7 +87,8 @@ def update(lambda_n, potential, dt, N, method = "tamed"):
 
 def stochastic_sampler(N, T, dt, *, num_trials = 500, potential = "quartic", method = "tamed",
                        track_distance = False, distance_types = ["ks"],
-                       track_crossing = False, T_star = 0, cross_dts = []):
+                       track_crossing = False, T_star = 0, cross_dts = [],
+                       track_newton = False):
     """ 
     Simulates DBM using the tamed scheme as described by Li and Menon (2013).
     Refactored to track particles (time is outer loop).
@@ -90,9 +96,13 @@ def stochastic_sampler(N, T, dt, *, num_trials = 500, potential = "quartic", met
         N (int): system dimension.
         T (float): final time.
         dt (float): step size; 1/N^2 for euler/tamed and 1/N for implicit.
-        num_trials (int): number of independent trials (/trajectories).
-        potential_type (str): type of potential, e.g. quartic.
-        scheme (str): update scheme e.g. tamed, euler, implicit.
+        num_trials (int): number of independent trials (/trajectories), often denoted M.
+        potential (str): type of potential, e.g. quartic.
+        method (str): update method e.g. tamed, euler, implicit.
+        track_distance (bool): if true, tracks distance between empirical and exact distribution.
+        distance_types (list): kolmogorov-smirnov (ks) or wassp (p-wassterstein) e.g. wass2.
+        track_crossing (bool): if true, only looks at eigenvalue crossing (does *not run sampler).
+        T_star (float), cross_dts (list): time to track eigenvalues, list of dts to check. 
     
     Added track_distance/distance_types and check_crossing/T_star.
     """
@@ -115,6 +125,9 @@ def stochastic_sampler(N, T, dt, *, num_trials = 500, potential = "quartic", met
         history_times = [[] for i in range(len(distance_types))]
         history_distances = [[] for i in range(len(distance_types))]
 
+    if (track_newton):
+        newton_iters = np.zeros((num_trials, num_steps))
+
     # Step to check crossing at.
     target_step = int(T_star / dt)
         
@@ -131,6 +144,10 @@ def stochastic_sampler(N, T, dt, *, num_trials = 500, potential = "quartic", met
         
         cur_time = step*dt
         for trial in range(num_trials):
+            if (track_newton):
+                particles[trial, :], newton_steps = update(particles[trial, :], potential, dt, N, method = method, track_newton = True)
+                newton_iters[trial, step] = newton_steps
+
             particles[trial, :] = update(particles[trial, :], potential, dt, N, method = method)
 
         if (track_distance) and (step % check_interval == 0):
@@ -144,6 +161,9 @@ def stochastic_sampler(N, T, dt, *, num_trials = 500, potential = "quartic", met
     # 
     if (track_distance):
         return particles.flatten(), np.array(history_times), np.array(history_distances)
+    
+    if (track_newton):
+        return particles.flatten(), newton_iters
     
     return particles.flatten()
 

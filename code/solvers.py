@@ -5,7 +5,7 @@ import sampler # includes V, V_prime, V_double_prime, ...
 importlib.reload(sampler);
 
 
-def newton_update(z, dt, N, potential, max_iter = 50, tol = 1e-8):
+def newton_update(z, dt, N, potential, max_iter = 50, tol = 1e-6, track_steps = False):
     """
     Solve the proximal step using Newton's method
         x_{k+1} = x_k - alpha_{x} hess(g_k)^{-1}nabla(g_k)
@@ -19,6 +19,10 @@ def newton_update(z, dt, N, potential, max_iter = 50, tol = 1e-8):
     """
 
     x = np.copy(z)
+
+    # NOTE Remove after testing.
+    newton_iters = 1
+
     for _ in range(max_iter):
         # Computes pairwise distance: same as in sampler.py for euler/tamed step.
         diff = np.subtract.outer(x, x)
@@ -29,7 +33,10 @@ def newton_update(z, dt, N, potential, max_iter = 50, tol = 1e-8):
         # Check convergence.
         # NOTE 2 norm vs inf norm?
         if (np.linalg.norm(nablaG, ord = np.inf)) < tol:
-            return x
+            if (track_steps):
+                return x, newton_iters 
+            else:
+                return x
         
         # Hessian - see notes, split into diag/not.
         # Nondiags are squared diff * -1/N,  diags are sum + 1/Delta t + potential'' .
@@ -42,7 +49,7 @@ def newton_update(z, dt, N, potential, max_iter = 50, tol = 1e-8):
 
         # Inverting the Hessian: cg?
         # let y = hess(f_k)^{-1}nabla f_k so that hess(f_k)y = nabla f_k
-        y, _ = spla.cg(hess, nablaG, rtol = tol)
+        y, info = spla.cg(hess, nablaG, rtol = tol)
 
         # Backtracking: more sophisticated exists, here we just half every time.
         # Just check adjacent diff https://numpy.org/devdocs/reference/generated/numpy.diff.html
@@ -63,6 +70,7 @@ def newton_update(z, dt, N, potential, max_iter = 50, tol = 1e-8):
             
         # 
         x = x_new 
+        newton_iters += 1
     
     #
     return x
