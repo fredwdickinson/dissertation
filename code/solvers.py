@@ -5,7 +5,7 @@ import sampler # includes V, V_prime, V_double_prime, ...
 importlib.reload(sampler);
 
 
-def newton_update(z, dt, N, potential, max_iter = 50, tol = 1e-6, track_steps = False):
+def newton_update(z, dt, N, potential, max_iter = 20, tol = 1e-6, track_steps = False):
     """
     Solve the proximal step using Newton's method
         x_{k+1} = x_k - alpha_{x} hess(g_k)^{-1}nabla(g_k)
