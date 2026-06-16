@@ -13,6 +13,8 @@ def V(x, type = "quartic"):
             return x**4 / 4
         case "quad-quartic":
             return x**2/2 + x**4/4
+        case "quadratic":
+            return x**2/2
         case _:
             raise ValueError(f"Potential type '{type}' not found.")
         
@@ -22,6 +24,8 @@ def V_prime(x, type = "quartic"):
             return x**3
         case "quad-quartic":
             return x + x**3
+        case "quadratic":
+            return x
         case _:
             raise ValueError(f"Potential type '{type}' not found.")
         
@@ -31,6 +35,8 @@ def V_double_prime(x, type = "quartic"):
             return 3*(x**2)
         case "quad-quartic":
             return 1 + 3*(x**2)
+        case "quadratic":
+            return 1
         case _:
             raise ValueError(f"Potential type '{type}' not found.")
 
