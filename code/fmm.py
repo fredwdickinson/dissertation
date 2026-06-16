@@ -161,20 +161,22 @@ def fmm_coulomb_1d(lambdas, p = 10, s = None):
     coulomb_approx = f/N
     return coulomb_approx
 
-
 # 
 
-def coulomb_interaction(x, N):
+def coulomb_difference(x, N, difference_only = False):
     """ 
-    Coulomb interaction: for now, use naive unless N > 5000?
+    Computes the Coulomb difference for some particles x \in R^N.
     """
 
     if (N <= 5000):
         diff = np.subtract.outer(x, x)           
         np.fill_diagonal(diff, np.inf)
-        coulomb_interaction = np.sum(1.0 / diff, axis=1) / N
 
-        return coulomb_interaction
+        if (difference_only):
+            return diff
+        else:
+            coulomb = np.sum(1.0 / diff, axis = 1) / N
+            return coulomb
     else:
         raise NotImplementedError("(fmm.py) Coulomb interaction for large $N$.")
 

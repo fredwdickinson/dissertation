@@ -12,19 +12,18 @@ from sampler import V, V_prime
 
 def H(x, N, potential):
     # HN(x): confinement and interaction (i<j, not i!=j).
-    v = np.sum(V(x, type = potential))
+    potential = np.sum(V(x, name = potential))
     
-    # Same naive subtract.outer() but then use triu indices.
-    diff = np.subtract.outer(x, x)
+    diff = fmm.coulomb_difference(x, N, difference_only = True)
     i, j = np.triu_indices(N, k = 1) # k is offset from diag
     interaction = np.sum(np.log(np.abs(diff[i, j]))) / N
 
-    return 1/2*v - interaction # NOTE 1/2 or not?
+    return 1/2*potential - interaction # NOTE 1/2 or not?
 
 def grad_H(x, N, potential):
     # Gradient: use Coulomb 
-    coulomb = fmm.coulomb_interaction(x, N)
-    vp = V_prime(x, type = potential)
+    coulomb = fmm.coulomb_difference(x, N)
+    vp = V_prime(x, name = potential)
 
     return 1/2*vp - coulomb
 
@@ -47,8 +46,11 @@ def verlet_proposal(x, y, dt, N, potential, alpha_N = 1.0):
 def acceptance_prob(x, y, x_prop, y_prop, N, potential, beta_N):
     # Step 3 of the HMC algorithm: calculate acceptance probability.
     energy_update = H(x_prop, N, potential) + np.dot(y_prop, y_prop)/2 - H(x, N, potential) - np.dot(y, y)/2
+
+    if (np.isnan(energy_update)): # e.g. for eigenvalue crossing.
+        return 0.0 
+    
     prob = np.exp(-1*beta_N*energy_update)
-        
     return min(1.0, prob)
 
 def hmc_step(x, y, dt, N, potential, beta_N, gamma_N = 1.0, alpha_N = 1.0):
@@ -76,9 +78,11 @@ def hmc_sampler(N, T, dt, *, num_trials = 500, potential = "quadratic",
     """
 
     if beta_N is None:
-        beta_N = N**2
+        beta_N = 2*N # for GUE.
 
     num_steps = int(T / dt)
+    total_proposals = num_steps * num_trials 
+    accepted_proposals = 0
 
     # Same initialisiation: Gaussian eigenvalues.
     particles = np.zeros((num_trials, N))
@@ -97,5 +101,6 @@ def hmc_sampler(N, T, dt, *, num_trials = 500, potential = "quadratic",
             
             particles[trial, :] = x_next
             momenta[trial, :] = momentum_next
+            accepted_proposals += accepted
 
-    return particles.flatten()
+    return particles.flatten(), accepted_proposals / total_proposals

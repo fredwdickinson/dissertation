@@ -1,14 +1,14 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import importlib
-import solvers, densities
-importlib.reload(solvers); importlib.reload(densities);
+import solvers, densities, fmm
+importlib.reload(solvers); importlib.reload(densities); importlib.reload(fmm);
 
 def hello():
     print("Hello from the sampler file!")
 
-def V(x, type = "quartic"):
-    match type:
+def V(x, name = "quartic"):
+    match name:
         case "quartic":
             return x**4 / 4
         case "quad-quartic":
@@ -16,10 +16,10 @@ def V(x, type = "quartic"):
         case "quadratic":
             return x**2/2
         case _:
-            raise ValueError(f"Potential type '{type}' not found.")
+            raise ValueError(f"Potential type '{name}' not found.")
         
-def V_prime(x, type = "quartic"):
-    match type:
+def V_prime(x, name = "quartic"):
+    match name:
         case "quartic":
             return x**3
         case "quad-quartic":
@@ -27,10 +27,10 @@ def V_prime(x, type = "quartic"):
         case "quadratic":
             return x
         case _:
-            raise ValueError(f"Potential type '{type}' not found.")
+            raise ValueError(f"Potential type '{name}' not found.")
         
-def V_double_prime(x, type = "quartic"):
-    match type:
+def V_double_prime(x, name = "quartic"):
+    match name:
         case "quartic":
             return 3*(x**2)
         case "quad-quartic":
@@ -38,7 +38,8 @@ def V_double_prime(x, type = "quartic"):
         case "quadratic":
             return 1
         case _:
-            raise ValueError(f"Potential type '{type}' not found.")
+            raise ValueError(f"Potential type '{name}' not found.")
+        
 
 def update(lambda_n, potential, dt, N, method = "tamed", track_newton = False):
     """ 
@@ -52,7 +53,7 @@ def update(lambda_n, potential, dt, N, method = "tamed", track_newton = False):
     
     noise_scale = np.sqrt(2*dt / (2*N))
     noise = np.random.normal(0, 1, N)
-    v_prime = V_prime(lambda_n, type = potential)
+    v_prime = V_prime(lambda_n, name = potential)
 
 
     if (method == "implicit"):
@@ -70,9 +71,7 @@ def update(lambda_n, potential, dt, N, method = "tamed", track_newton = False):
 
     else:
         # Computes pairwise distance matrix, then fill diags with inf: 1/inf = 0.
-        diff = np.subtract.outer(lambda_n, lambda_n)
-        np.fill_diagonal(diff, np.inf)
-        coulomb_interaction = np.sum(1.0 / diff, axis = 1) / N
+        coulomb_interaction = fmm.coulomb_difference(lambda_n, N)
 
         if (method == "tamed"):
             tamed_potential = v_prime / (2 + dt*np.abs(v_prime))
