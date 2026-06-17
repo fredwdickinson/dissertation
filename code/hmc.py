@@ -66,9 +66,6 @@ def hmc_step(x, y, dt, N, potential, beta_N, gamma_N = 1.0, alpha_N = 1.0):
     else:
         return x, -1*y_tilde, False
     
-#
-#
-#
 
 def hmc_sampler(N, T, dt, *, num_trials = 500, potential = "quadratic",
                 beta_N = None, gamma_N = 1.0, alpha_N = 1.0):
@@ -104,3 +101,43 @@ def hmc_sampler(N, T, dt, *, num_trials = 500, potential = "quadratic",
             accepted_proposals += accepted
 
     return particles.flatten(), accepted_proposals / total_proposals
+
+
+def target_accept_hmc(N, hmc_steps, target_prob, init = None, potential = "quartic"):
+    """ 
+    Run the HMC algorithm for hmc_steps, finding the step size that provides the target
+    acceptance probability.
+        Step sizes updated with dt += dt*(step_accept) / iter   some form of diminishing adaptation? 
+    Initialise at equilibrium or zero?
+
+    Input:
+        N (int): dimension
+        hmc_steps (int) steps to take
+        target_prob (float): in [0, 1]
+        init (ndarray or None): if True, inits at GUE equilibrium (semicircle).
+    """
+
+    if init is None:
+        x = np.sort(np.random.normal(0, 1, N)) # particles, can change to be any init.
+    else:
+        # 
+        A = np.random.normal(0, 1, (N, N)) + 1j * np.random.normal(0, 1, (N, N))
+        M = (A + A.conj().T) / (2.0 * np.sqrt(N))
+        x = np.linalg.eigvalsh(M)
+
+    y = np.zeros(N) # momentum
+    
+    # Start step size at 1/N^(1/3). 
+    step = np.zeros(hmc_steps + 1); step[0] = 1/N**(1/3); 
+    accepts = np.zeros(hmc_steps)
+    
+    for j in range(hmc_steps):
+        # Run standard scheme.
+        cur_dt = step[j]
+        x_next, y_next, accepted = hmc_step(x, y, cur_dt, N, potential = potential, beta_N = 2*N)
+
+        step[j + 1] = cur_dt + cur_dt*(accepted - target_prob)/(j + 1)
+        x, y = x_next, y_next
+        accepts[j] = int(accepted)
+        
+    return accepts, step
