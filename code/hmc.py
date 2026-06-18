@@ -128,7 +128,8 @@ def target_accept_hmc(N, hmc_steps, target_prob, init = None, potential = "quart
     y = np.zeros(N) # momentum
     
     # Start step size at 1/N^(1/3). 
-    step = np.zeros(hmc_steps + 1); step[0] = 1/N**(1/3); 
+    step = np.zeros(hmc_steps + 1)
+    step[0] = 1/(N**(3/3)); # NOTE Change from -1/3 to see if converges to correct dt in 10^5 iters.
     accepts = np.zeros(hmc_steps)
     
     for j in range(hmc_steps):
