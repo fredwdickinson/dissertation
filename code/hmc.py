@@ -137,7 +137,8 @@ def target_accept_hmc(N, hmc_steps, target_prob, init = None, potential = "quart
         cur_dt = step[j]
         x_next, y_next, accepted = hmc_step(x, y, cur_dt, N, potential = potential, beta_N = 2*N)
 
-        step[j + 1] = cur_dt + cur_dt*(accepted - target_prob)/(j + 1)
+        power = 0.75 # somewhere between sqrt and ^1?
+        step[j + 1] = cur_dt + cur_dt*(accepted - target_prob)/((j + 1)**power)
         x, y = x_next, y_next
         accepts[j] = int(accepted)
         
