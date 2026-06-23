@@ -28,7 +28,7 @@ def newton_update(z, dt, N, potential, max_iter = 20, tol = 1e-6, track_steps = 
         diff = np.subtract.outer(x, x)
         np.fill_diagonal(diff, np.inf)
         coulomb_interaction = np.sum(1.0 / diff, axis = 1) / N 
-        nablaG = 1/2*sampler.V_prime(x, type = potential) - coulomb_interaction + (x - z)/dt
+        nablaG = 1/2*sampler.V_prime(x, name = potential) - coulomb_interaction + (x - z)/dt
 
         # Check convergence.
         # NOTE 2 norm vs inf norm?
@@ -44,7 +44,7 @@ def newton_update(z, dt, N, potential, max_iter = 20, tol = 1e-6, track_steps = 
         np.fill_diagonal(hess, 0.0)
 
         diag_coulomb = -np.sum(hess, axis = 1) # Already removed j=k.
-        diags = 1/2*sampler.V_double_prime(x, type = potential) + diag_coulomb + 1/dt
+        diags = 1/2*sampler.V_double_prime(x, name = potential) + diag_coulomb + 1/dt
         np.fill_diagonal(hess, diags)
 
         # Inverting the Hessian: cg?
