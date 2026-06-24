@@ -22,3 +22,5 @@ lines.linewidth : 1.25
 lines.markersize : 2
 axes.linewidth : 0.8
 axes.formatter.use_mathtext : True
+axes.grid : True
+grid.alpha : 0.5

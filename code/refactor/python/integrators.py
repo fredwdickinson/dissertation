@@ -13,7 +13,7 @@ Drift: coulomb interaction and confinement.
 @njit
 def euler_step(x, coulomb, v_prime, dt, noise_scale, beta):
     # Standard Euler-Maruyama step.
-    drift = (beta / 2.0)*coulomb - (beta/4.0)*v_prime
+    drift = coulomb - 1/2*v_prime
     noise = np.random.normal(0.0, 1.0, x.shape)
     return x + drift*dt + noise_scale*noise
 
@@ -21,10 +21,10 @@ def euler_step(x, coulomb, v_prime, dt, noise_scale, beta):
 @njit
 def tamed_euler_step(x, coulomb, v_prime, dt, noise_scale, beta):
     # Tamed Euler step as by Li and Menon.
-    raw_confinement = (beta/4.0)*v_prime 
+    raw_confinement = 1/2*v_prime 
     tamed_confinement = raw_confinement/(1.0 + dt*np.abs(raw_confinement))
 
-    drift = (beta/2.0)*coulomb - tamed_confinement    
+    drift = coulomb - tamed_confinement    
     noise = np.random.normal(0, 1, x.shape)
 
     return x + drift*dt + noise_scale*noise
@@ -74,18 +74,18 @@ def implicit_newton_step(x, dt, noise_scale, beta, potential_type):
                 raise ValueError("Invalid potential type specified in implicit Newton step.")
                 
             # Generalised grad for any beta (refer to notes).
-            nablaG = (current_x - z[m])/dt - (beta/2.0)*coulomb + (beta/4.0)*v_prime
+            nablaG = (current_x - z[m])/dt - coulomb + 1/2*v_prime
             
             if (np.max(np.abs(nablaG)) < tol):
                 break
             
             # Again see notes: explicit construction for diags and not.
             # Nondiags are squared diff *-1/N,  diags are sum + 1/Delta t + potential.
-            hess = -beta/(2.0*N*(diff**2))
+            hess = -1/(N*(diff**2))
             for i in range(N): 
                 hess[i, i] = 0.0
                 
-            diags = 1.0/dt + (beta/4.0)*v_double_prime - np.sum(hess, axis = 1) # Why inf diags are removed.
+            diags = 1.0/dt + 1/2*v_double_prime - np.sum(hess, axis = 1) # Why inf diags are removed.
             for i in range(N): 
                 hess[i, i] = diags[i]
                 
