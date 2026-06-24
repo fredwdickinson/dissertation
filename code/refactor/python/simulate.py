@@ -2,8 +2,27 @@ import numpy as np
 import python.forces as forces
 import python.integrators as integrators
 
+def get_pipeline(method, **kwargs):
+    if (method == "euler"):
+        return make_euler_pipeline(**kwargs)
+    elif (method == "tamed"):
+        return make_tamed_pipeline(**kwargs)
+    elif (method == "implicit"):
+        return make_implicit_pipeline(**kwargs)
+    else:
+        raise ValueError(f"Do not know method {method}.")
+    
+# ==========================================================================================================
+    
+def make_euler_pipeline(dt, noise_scale, beta, potential_type):
+    def pipeline(state):
+        coulomb, v_prime = forces.compute_forces(state, beta, potential_type)
+        return integrators.euler_step(state, coulomb, v_prime, dt, noise_scale, beta)
+
+    return pipeline
+
 def make_tamed_pipeline(dt, noise_scale, beta, potential_type):
-    # Step pipeline for explicit methods (e.g. euler-maruyama, tamed version).
+    # Step pipeline for tamed Euler.
     def pipeline(state):
         coulomb, v_prime = forces.compute_forces(state, beta, potential_type)
         return integrators.tamed_euler_step(state, coulomb, v_prime, dt, noise_scale, beta)
@@ -23,7 +42,7 @@ def simulate_dbm(init, steps, step_pipeline):
     """
     Generator object for the trajectory: much better performance for memory, and easier experiment running.
     Input:
-        init (ndarray): initial particle state.
+        init (ndarray): initial particle state, shape MxN.
         dt (float): timestep.
         step_pipeline (func): pipeline for a specific method.
     """
@@ -55,23 +74,23 @@ def collect_snapshots(trajectory, num_steps, burn_in = None, interval = None):
     return np.concatenate(snapshots).flatten()
 
 
-def count_crossings(trajectory):
+def count_crossings(trajectory, step_star):
     """
-
+    Determines how many particles cross across all trials in a simulation at T_star (give step_star).
+    Returns the total number of crossings.
     """
     total_crossings = 0
     prev_ordering = None
-    for step, state in enumerate(trajectory):
-        # An NxN boolean matrix with True := state[i] < state[j].
-        current_ordering = (state[:, None] < state)
 
-        if step == 0:
-            prev_ordering = current_ordering
-            continue
+    for step, state in enumerate(trajectory):
+        if (step == 0):
+            prev_ordering = (state[:, :, None] < state[:, None, :])
+        elif (step == step_star):
+            # Similar to before, but handles all trials at once.
+            current_ordering = (state[:, :, None] < state[:, None, :])
+            flips = (current_ordering != prev_ordering)
+
+            # k is the diagonal offset.
+            return np.sum(np.triu(flips, k = 1))
         
-        flips = (current_ordering != prev_ordering)
-        crossings_in_step = np.sum(np.triu(flips, k = 1)) # upper triangular only (k is diag offset).
-        total_crossings += crossings_in_step
-        prev_ordering = current_ordering
-        
-    return total_crossings
+    raise ValueError(r"Never reached $T^*$ in count_crossings().")
