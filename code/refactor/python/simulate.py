@@ -59,7 +59,8 @@ def simulate_dbm(init, steps, step_pipeline):
 
 def collect_snapshots(trajectory, num_steps, burn_in = None, interval = None):
     """ 
-    
+    Looks at the trajectory's positions every 20th step after a long burn-in period.
+    Room to change the burn-in or interval as parameters.
     """
 
     if (burn_in is None):

@@ -3,15 +3,15 @@ from numba import njit
 
 @njit
 def potential_quadratic(x):
-    return np.sum((x**2)/2.0)
+    return (x**2)/2.0
 
 @njit
 def potential_quartic(x):
-    return np.sum((x**4)/4.0)
+    return (x**4)/4.0
 
 @njit
 def potential_quad_quartic(x):
-    return np.sum((x**2)/2.0 + (x**4)/4.0)
+    return (x**2)/2.0 + (x**4)/4.0
 
 #
 # First derivatives for e.g. drift term.

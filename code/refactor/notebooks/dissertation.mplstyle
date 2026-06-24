@@ -1,0 +1,24 @@
+# Fonts & LaTeX
+text.usetex : True
+font.family : serif
+font.serif : cmr10
+mathtext.fontset : cm
+
+# Sizes
+font.size : 12
+axes.titlesize : 13
+axes.labelsize : 12
+xtick.labelsize : 10
+ytick.labelsize : 10
+legend.fontsize : 10
+
+# Figure & Layout
+figure.figsize : 6.5, 3
+figure.dpi : 120
+figure.constrained_layout.use : True
+
+# Lines & Axes
+lines.linewidth : 1.25
+lines.markersize : 2
+axes.linewidth : 0.8
+axes.formatter.use_mathtext : True
