@@ -1,6 +1,33 @@
 import numpy as np
 from numba import njit 
 
+def get_force(name, deriv):
+    """
+    Returns the function for potential 'name' and deriv e.g. None, "grad", "hess".
+    """
+
+    match name:
+        case "quartic":
+            match deriv:
+                case None:
+                    return potential_quartic
+                case "grad":
+                    return grad_quartic
+                case "hess":
+                    return hess_quartic
+        case "quadratic":
+            match deriv:
+                case None:
+                    return potential_quadratic
+                case "grad":
+                    return grad_quadratic
+                case "hess":
+                    return hess_quadratic
+        case _:
+            raise ValueError(f"Could not find force: {name}, {deriv}.")
+        
+# =================================================================================================
+
 @njit
 def potential_quadratic(x):
     return (x**2)/2.0
@@ -52,57 +79,57 @@ def hess_quad_quartic(x):
 #
 
 @njit
-def coulomb_interaction_1d(x):
-    """ 
-    Returns 1/N*sum(1/x_i - x_j).
-    NOTE may change to compute distances only.
-    NOTE will be replaced by FMM when N is large.
+def coulomb_interaction(x):
     """
-    N = len(x)
-    interaction = np.zeros(N)
-
-    for i in range(N):
-        for j in range(N):
-            if (i != j):
-                interaction[i] += 1.0/(x[i] - x[j])
-    
-    return interaction/N
-
-#
-# Drift for general beta-ensembles...
-# NOTE Check this is right against notes.
-#
-
-
-@njit
-def compute_forces(x, beta, potential_type):
+    Calculates Coulomb interaction in 1d or 2d (1/)
+    NOTE Use FMM for N >= 5000?
     """
-    Calculates the Coulomb interaction and the confinement potential, returning them separately.
-    Input x is of shape (M, N), returns two lots of shape M, N.
-    """
-    M, N = x.shape 
-    coulomb_interaction = np.zeros((M, N))
 
-    # NOTE Should make Coulomb more efficient (but Numba does like loops for m, at least).
-    # USE global Coulomb.
-    for m in range(M):
+    if (x.ndim == 1):
+        N = x.shape[0]
+        coulomb = np.zeros(N)
+        
         for i in range(N):
             for j in range(N):
-                if (i != j):
-                    coulomb_interaction[m, i] += 1.0/(x[m, i] - x[m, j])
-
-    coulomb_interaction = coulomb_interaction/N
-
-    # Find potential and add on to coulomb interaction term.
-    if potential_type == "quadratic":
-        confinement = grad_quadratic(x)
-
-    elif potential_type == "quartic":
-        confinement = grad_quartic(x)
-
-    elif potential_type == "quad-quartic":
-        confinement = grad_quad_quartic(x)
+                if i != j:
+                    # += inherently handles the summation.
+                    coulomb[i] += 1.0 / (x[i] - x[j])
+                    
+        return coulomb/N
+    elif (x.ndim == 2):
+        M, N = x.shape
+        coulomb = np.zeros((M, N))
+        
+        for m in range(M):
+            for i in range(N):
+                for j in range(N):
+                    if i != j:
+                        # += inherently handles the summation.
+                        coulomb[m, i] += 1.0 / (x[m, i] - x[m, j])
+                        
+        return coulomb/N
     else:
-        raise ValueError("Invalid potential type specified in compute_drift().")
+        raise ValueError(f"Input array to coulomb interaction wrong shape ({x.shape}).")
+
+@njit
+def log_repulsion(x):
+    """ 
+    Calculates log repulsion (sum i<j log(x_j) - log(x_i)),
+    as in the standard Hamiltonian.
+    """
+
+    if (x.ndim == 1):
+        N = x.shape[0]
+        repulsion = np.zeros(N)
+
+        for i in range(N):
+            for j in range(i + 1, N):
+                repulsion[i] += np.log(np.abs(x[j] - x[i]))
+        
+        return repulsion/N
     
-    return coulomb_interaction, confinement
+    elif (x.ndim == 2):
+        raise NotImplementedError("Dimension 2 (with trials) in log repulsion.")
+
+    else:
+        raise ValueError(f"Input array to log repulsion wrong shape ({x.shape}).") 

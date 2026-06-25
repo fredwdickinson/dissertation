@@ -2,6 +2,12 @@ import numpy as np
 import python.forces as forces
 import python.integrators as integrators
 
+potential_ints = {
+    "quadratic": 0,
+    "quad-quartic": 1,
+    "quartic": 2
+}
+
 def get_pipeline(method, **kwargs):
     if (method == "euler"):
         return make_euler_pipeline(**kwargs)
@@ -14,26 +20,59 @@ def get_pipeline(method, **kwargs):
     
 # ==========================================================================================================
     
-def make_euler_pipeline(dt, noise_scale, beta, potential_type):
+def make_euler_pipeline(dt, noise_scale, potential_type):
     def pipeline(state):
-        coulomb, v_prime = forces.compute_forces(state, beta, potential_type)
-        return integrators.euler_step(state, coulomb, v_prime, dt, noise_scale, beta)
+        coulomb = forces.coulomb_interaction(state)
+        v_prime_func = forces.get_force(potential_type, "grad")
+        v_prime = v_prime_func(state)
+
+        next_x = integrators.euler_step(state, coulomb, v_prime, dt, noise_scale)
+        return next_x, {}
 
     return pipeline
 
-def make_tamed_pipeline(dt, noise_scale, beta, potential_type):
+def make_tamed_pipeline(dt, noise_scale, potential_type):
     # Step pipeline for tamed Euler.
     def pipeline(state):
-        coulomb, v_prime = forces.compute_forces(state, beta, potential_type)
-        return integrators.tamed_euler_step(state, coulomb, v_prime, dt, noise_scale, beta)
+        coulomb = forces.coulomb_interaction(state)
+        v_prime_func = forces.get_force(potential_type, "grad")
+        v_prime = v_prime_func(state)
+
+        next_x = integrators.tamed_euler_step(state, coulomb, v_prime, dt, noise_scale)
+        return next_x, {}
 
     return pipeline
 
-def make_implicit_pipeline(dt, noise_scale, beta, potential_type):
+def make_implicit_pipeline(dt, noise_scale, potential_type):
     # Step pipeline for implicit methods: skips the Coulomb pre-computation.
     def pipeline(state):
-        return integrators.implicit_newton_step(state, dt, noise_scale, beta, potential_type)
+        potential_int = potential_ints[potential_type]
+        next_x = integrators.implicit_newton_step(state, dt, potential_int, noise_scale)
+        return next_x, {}
     
+    return pipeline
+
+def make_mala_pipeline(dt, noise_scale, potential_type, beta):
+    """
+    Step pipeline for MALA. 
+    Maintains state of forces to avoid recalculation (hence the nonlocal).
+    """
+    
+    current_coulomb = None
+    potential_int = potential_ints[potential_type]
+
+    def pipeline(state):
+        nonlocal current_coulomb
+        
+        # Only calculate on first step.
+        if (current_coulomb is None):
+            current_coulomb = forces.coulomb_interaction(state)
+
+        next_x, next_coulomb, accepts, crossing_rejects = integrators.mala_step(state, dt, potential_int, current_coulomb, noise_scale, beta)
+
+        current_coulomb = next_coulomb
+        return next_x, {"accepts": accepts, "cross_rejects": crossing_rejects}
+
     return pipeline
 
 # ==========================================================================================================
@@ -47,11 +86,11 @@ def simulate_dbm(init, steps, step_pipeline):
         step_pipeline (func): pipeline for a specific method.
     """
     state = np.copy(init)
-    yield state 
+    yield state, {}
 
     for _ in range(steps):
-        state = step_pipeline(state)
-        yield state
+        state, info = step_pipeline(state)
+        yield state, info
 
 # ====================================================================================================================
 # "Observers" that use the trajectory information.
@@ -68,11 +107,24 @@ def collect_snapshots(trajectory, num_steps, burn_in = None, interval = None):
         interval = int(num_steps / 20)
      
     snapshots = []
-    for step, state in enumerate(trajectory):
+    for step, (state, info) in enumerate(trajectory):
         if (step >= burn_in) and ((step - burn_in) % interval == 0):
             snapshots.append(np.copy(state))
 
     return np.concatenate(snapshots).flatten()
+
+def acceptance_rate(trajectory):
+    """
+    
+    """
+
+    accepts = []; cross_rejects = [];
+    for step, (state, info) in enumerate(trajectory):
+        if (step > 0):
+            accepts.append(info["accepts"])
+            cross_rejects.append(info["cross_rejects"])
+
+    return np.array(accepts), np.array(cross_rejects)
 
 
 def count_crossings(trajectory, step_star):
@@ -83,7 +135,7 @@ def count_crossings(trajectory, step_star):
     total_crossings = 0
     prev_ordering = None
 
-    for step, state in enumerate(trajectory):
+    for step, (state, info) in enumerate(trajectory):
         if (step == 0):
             prev_ordering = (state[:, :, None] < state[:, None, :])
         elif (step == step_star):
