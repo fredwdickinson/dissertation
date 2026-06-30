@@ -178,7 +178,7 @@ def imla_step(x, dt, potential_int, noise_scale, beta, metropolise):
     next_x = np.zeros_like(x)
     z = np.zeros_like(x) # NOTE pre-compute all starting noises?
     
-    max_iter, tol = 25, 1e-3
+    max_iter, tol = 25, 1e-5
     for m in range(M):
         cur_x = x[m]
         z[m] = np.sort(cur_x + noise_scale*np.random.normal(0.0, 1.0, N))
@@ -218,7 +218,7 @@ def imla_step(x, dt, potential_int, noise_scale, beta, metropolise):
                 coulomb[i] = force_i/N 
                 hess[i, i] = diag_sum_i/N + diags[i]
 
-            nablaG = (y - z[m])/dt - coulomb + 0.5 * v_prime
+            nablaG = (y - z[m])/dt - coulomb + 0.5*v_prime
             if (np.max(np.abs(nablaG)) < tol):
                 break
             
@@ -236,7 +236,7 @@ def imla_step(x, dt, potential_int, noise_scale, beta, metropolise):
                 newton_step_size *= 0.5
                 
             # NOTE Add code here for crossing rejects.
-            # Break early.
+            # Break early. Remove the sort on z[m]
                 
             y = y_try
             # End Newton iteration loop.
@@ -249,13 +249,22 @@ def imla_step(x, dt, potential_int, noise_scale, beta, metropolise):
             continue
         
         # MAIMLA: proposal created, now accept/reject.
-        # Need to construct H_N in terms of (cur_x, y_prop), for Gibbs measure (log).
+        # Need to construct H_N AND grad H_N in terms of (cur_x, y_prop).
         v_x = evaluate_force(cur_x, potential_int, 0); v_y = evaluate_force(y, potential_int, 0)        
         log_repulsion_x = log_repulsion(cur_x); log_repulsion_y = log_repulsion(y)
 
+        u = (cur_x + y)/2
+        v_prime_u = evaluate_force(u, potential_int, 1)
+        coulomb_u = coulomb_interaction(u)
+
+        # (y - x)*grad H_N(u)
+        log_q_ratio = beta*N*np.sum((y - cur_x)*(1/2*v_prime_u - coulomb_u))
+
         sum_ham_x = np.sum(v_x)/2 - np.sum(log_repulsion_x)
         sum_ham_y = np.sum(v_y)/2 - np.sum(log_repulsion_y)
-        log_alpha = -beta*N*(sum_ham_y - sum_ham_x)
+        log_pi_ratio = -beta*N*(sum_ham_y - sum_ham_x) 
+
+        log_alpha = log_pi_ratio + log_q_ratio
 
         if (np.log(np.random.random()) < log_alpha):
             next_x[m] = y

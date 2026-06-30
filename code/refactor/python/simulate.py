@@ -108,6 +108,26 @@ def simulate_dbm(init, steps, step_pipeline):
 # "Observers" that use the trajectory information.
 # collect_snapshots produces the hist every X after burn in, count_crossings looks for unique eigenvalue crossing, etc.
 
+def metropolis_experiment(trajectory, num_steps, burn_in = None, interval = None):
+    """ 
+    Histogram plotter and acceptance rate.
+    """
+    if (burn_in is None):
+        burn_in = int(3/4*num_steps)
+        interval = int(num_steps / 20)
+
+    accepts = []; cross_rejects = [];
+    snapshots = []
+    for step, (state, info) in enumerate(trajectory):
+        # For histogram.
+        if (step >= burn_in) and ((step - burn_in) % interval == 0):
+            snapshots.append(np.copy(state))
+
+        if (step > 0):
+            accepts.append(info["accepts"])
+
+    return np.concatenate(snapshots).flatten(), np.array(accepts)
+
 def collect_snapshots(trajectory, num_steps, burn_in = None, interval = None):
     """ 
     Looks at the trajectory's positions every 20th step after a long burn-in period.
