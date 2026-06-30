@@ -1,30 +1,57 @@
 import numpy as np
 from numba import njit 
 
-def get_force(name, deriv):
+@njit
+def get_force_func(potential_int, deriv_int):
     """
     Returns the function for potential 'name' and deriv e.g. None, "grad", "hess".
     """
-
-    match name:
-        case "quartic":
-            match deriv:
-                case None:
-                    return potential_quartic
-                case "grad":
-                    return grad_quartic
-                case "hess":
-                    return hess_quartic
-        case "quadratic":
-            match deriv:
-                case None:
+    match potential_int:
+        case 0:
+            match deriv_int:
+                case 0:
                     return potential_quadratic
-                case "grad":
+                case 1:
                     return grad_quadratic
-                case "hess":
+                case 2:
                     return hess_quadratic
+        case 2:
+            match deriv_int:
+                case 0:
+                    return potential_quartic
+                case 1:
+                    return grad_quartic
+                case 2:
+                    return hess_quartic
         case _:
-            raise ValueError(f"Could not find force: {name}, {deriv}.")
+            raise ValueError(f"Unsupported potential integer {potential_int}.")
+        
+@njit
+def evaluate_force(x, potential_int, deriv_int):
+    """ 
+    Evaluates the force for potential "name" and deriv e.g. None, grad, hess
+    at the given input x.
+    """
+
+    match potential_int:
+        case 0:
+            match deriv_int:
+                case 0:
+                    return potential_quadratic(x)
+                case 1:
+                    return grad_quadratic(x)
+                case 2:
+                    return hess_quadratic(x)
+        case 2:
+            match deriv_int:
+                case 0:
+                    return potential_quartic(x)
+                case 1:
+                    return grad_quartic(x)
+                case 2:
+                    return hess_quartic(x)
+        case _:
+            raise ValueError(f"Unsupported potential name {potential_int}.")
         
 # =================================================================================================
 
@@ -115,7 +142,7 @@ def coulomb_interaction(x):
 def log_repulsion(x):
     """ 
     Calculates log repulsion (sum i<j log(x_j) - log(x_i)),
-    as in the standard Hamiltonian.
+    as in the standard Hamiltonian. Divides by N.
     """
 
     if (x.ndim == 1):

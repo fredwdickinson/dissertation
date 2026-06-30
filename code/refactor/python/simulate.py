@@ -15,6 +15,8 @@ def get_pipeline(method, **kwargs):
         return make_tamed_pipeline(**kwargs)
     elif (method == "implicit"):
         return make_implicit_pipeline(**kwargs)
+    elif (method == "imla"):
+        return make_imla_pipeline(**kwargs)
     else:
         raise ValueError(f"Do not know method {method}.")
     
@@ -51,6 +53,16 @@ def make_implicit_pipeline(dt, noise_scale, potential_type):
         return next_x, {}
     
     return pipeline
+
+def make_imla_pipeline(dt, noise_scale, potential_type, beta, metropolise):
+    # 
+    def pipeline(state):
+        potential_int = potential_ints[potential_type]
+        next_x, accepts = integrators.imla_step(state, dt, potential_int, noise_scale, beta, metropolise)
+        return next_x, {"accepts": accepts}
+    
+    return pipeline
+
 
 def make_mala_pipeline(dt, noise_scale, potential_type, beta):
     """
@@ -122,9 +134,8 @@ def acceptance_rate(trajectory):
     for step, (state, info) in enumerate(trajectory):
         if (step > 0):
             accepts.append(info["accepts"])
-            cross_rejects.append(info["cross_rejects"])
 
-    return np.array(accepts), np.array(cross_rejects)
+    return np.array(accepts)
 
 
 def count_crossings(trajectory, step_star):
