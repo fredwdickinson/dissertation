@@ -25,7 +25,7 @@ def get_pipeline(method, **kwargs):
 def make_euler_pipeline(dt, noise_scale, potential_type):
     def pipeline(state):
         coulomb = forces.coulomb_interaction(state)
-        v_prime_func = forces.get_force(potential_type, "grad")
+        v_prime_func = forces.get_force_func(potential_ints[potential_type], 1)
         v_prime = v_prime_func(state)
 
         next_x = integrators.euler_step(state, coulomb, v_prime, dt, noise_scale)
@@ -37,7 +37,7 @@ def make_tamed_pipeline(dt, noise_scale, potential_type):
     # Step pipeline for tamed Euler.
     def pipeline(state):
         coulomb = forces.coulomb_interaction(state)
-        v_prime_func = forces.get_force(potential_type, "grad")
+        v_prime_func = forces.get_force_func(potential_ints[potential_type], 1)
         v_prime = v_prime_func(state)
 
         next_x = integrators.tamed_euler_step(state, coulomb, v_prime, dt, noise_scale)
@@ -205,6 +205,9 @@ def count_crossings(trajectory, step_star):
             flips = (current_ordering != prev_ordering)
 
             # k is the diagonal offset.
-            return np.sum(np.triu(flips, k = 1))
+            mask = np.triu(np.ones((state.shape[1], state.shape[1]), dtype = bool), k = 1)
+            per_trial_arr = np.sum(flips & mask, axis = (1, 2))
+
+            return per_trial_arr
         
     raise ValueError(r"Never reached $T^*$ in count_crossings().")
