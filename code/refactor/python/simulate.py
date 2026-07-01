@@ -104,6 +104,36 @@ def simulate_dbm(init, steps, step_pipeline):
         state, info = step_pipeline(state)
         yield state, info
 
+def imla_target_dt(init, total_steps, potential_int, beta, dt_init, target):
+    """
+    Generator that yields dt and accept rate (no particles).
+    """
+
+    M, N = init.shape
+    x = np.copy(init)
+    dt = dt_init
+
+    # Will update according to log(dt_next) = log(dt) + gamma_n(accept - target)
+    # where gamma_n is the 1/(step+1)^kappa.
+    kappa = 0.5
+    smooth_avg_accept = target # For init only.
+    
+    for step_idx in range(total_steps):
+        noise_scale = np.sqrt(2*dt/(beta*N))
+        x, accept_rate = integrators.imla_step(
+            x, dt, potential_int, noise_scale, beta, metropolise = True)
+        
+        smooth_avg_accept = 0.75*smooth_avg_accept + 0.25*accept_rate
+        
+        if (step_idx > 30):
+            gamma_n = 0.1/((step_idx + 1)**kappa)
+            dt = dt*np.exp(gamma_n*(smooth_avg_accept - target))
+        
+        if (dt < 1e-8) or (dt > 0.75):
+            raise ValueError("Step size too big or small in target scheme (dt = {dt}).")
+
+        yield step_idx, dt, accept_rate
+
 # ====================================================================================================================
 # "Observers" that use the trajectory information.
 # collect_snapshots produces the hist every X after burn in, count_crossings looks for unique eigenvalue crossing, etc.

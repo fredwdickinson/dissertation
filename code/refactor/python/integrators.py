@@ -1,11 +1,9 @@
 import numpy as np
 from numba import njit
 
-from python.forces import potential_quadratic, potential_quad_quartic, potential_quartic
-from python.forces import grad_quadratic, grad_quad_quartic, grad_quartic
-from python.forces import hess_quadratic, hess_quad_quartic, hess_quartic
 from python.forces import evaluate_force
 from python.forces import coulomb_interaction, log_repulsion
+from python.solvers import cg_jacobi
 
 @njit
 def euler_step(x, coulomb, v_prime, dt, noise_scale):
@@ -77,11 +75,8 @@ def implicit_newton_step(x, dt, potential_int, noise_scale):
             nablaG = (current_x - z[m])/dt - coulomb + 1/2*v_prime
             if (np.max(np.abs(nablaG)) < tol):
                 break
-
-            # CG knowing that the Hessian is SDD.
-            # NOTE To implement.
-            # y = cg_sdd(hess, nablaG)
-            y = np.linalg.solve(hess, nablaG)   
+            
+            y = cg_jacobi(hess, nablaG)
             current_x = current_x - y
         
         # End of individual trial.
@@ -126,16 +121,8 @@ def mala_step(x, dt, potential_int, coulomb, noise_scale, beta):
             total_crossing_rejects += 1
             continue
         
-        match potential_int:
-            case 0:
-                v_x = potential_quadratic(current_x); v_y = potential_quadratic(y_prop);
-                v_prime_y = grad_quadratic(y_prop);
-            case 2:
-                v_x = potential_quartic(current_x); v_y = potential_quartic(y_prop);
-                v_prime_y = grad_quartic(y_prop)
-            case _:
-                raise ValueError(f"Do not know potential integer {potential_int}.")
-
+        v_x = evaluate_force(current_x, potential_int, 0); v_y = evaluate_force(y_prop, potential_int, 0)
+        v_prime_y = evaluate_force(y_prop, potential_int, 1)
         coulomb_y = coulomb_interaction(y_prop)      
         drift_y = coulomb_y - 1/2*v_prime_y # enough for grad H_N
         
@@ -221,9 +208,8 @@ def imla_step(x, dt, potential_int, noise_scale, beta, metropolise):
             nablaG = (y - z[m])/dt - coulomb + 0.5*v_prime
             if (np.max(np.abs(nablaG)) < tol):
                 break
-            
-           # NOTE Use the cg solver.
-            step = np.linalg.solve(hess, nablaG) 
+
+            step = cg_jacobi(hess, nablaG)
 
             # Backtracking in the midpoint method.
             newton_step_size = 1.0; min_step = 0.125
