@@ -160,14 +160,14 @@ def metropolis_experiment(trajectory, num_steps, burn_in = None, interval = None
 
 def collect_snapshots(trajectory, num_steps, burn_in = None, interval = None):
     """ 
-    Looks at the trajectory's positions every 20th step after a long burn-in period.
+    Looks at the trajectory's positions every 10th step after a long burn-in period.
     Room to change the burn-in or interval as parameters.
     """
 
     if (burn_in is None):
-        burn_in = int(3/4*num_steps)
-        interval = int(num_steps / 20)
-     
+        burn_in = int(1/2*num_steps)
+        interval = 10
+
     snapshots = []
     for step, (state, info) in enumerate(trajectory):
         if (step >= burn_in) and ((step - burn_in) % interval == 0):
@@ -175,17 +175,18 @@ def collect_snapshots(trajectory, num_steps, burn_in = None, interval = None):
 
     return np.concatenate(snapshots).flatten()
 
-def acceptance_rate(trajectory):
+def acceptance_rate(trajectory, burn_steps = 0):
     """
     
     """
 
     accepts = []; cross_rejects = [];
     for step, (state, info) in enumerate(trajectory):
-        if (step > 0):
+        if (step > burn_steps):
             accepts.append(info["accepts"])
+            cross_rejects.append(info["cross_rejects"])
 
-    return np.array(accepts)
+    return np.array(accepts), np.array(cross_rejects)
 
 
 def count_crossings(trajectory, step_star):

@@ -91,13 +91,7 @@ def mala_step(x, dt, potential_int, coulomb, noise_scale, beta):
     Needs pure potential from forces.py as well as v_prime.
     """
 
-    match potential_int:
-        case 0:
-            v_prime = grad_quadratic(x)
-        case 2:
-            v_prime = grad_quartic(x)
-        case _:
-            raise ValueError(f"MALA integrator does not support potential int {potential_int}.")
+    v_prime = evaluate_force(x, potential_int, 1)
 
     M, N = x.shape
     total_accepts = 0; total_crossing_rejects = 0;
