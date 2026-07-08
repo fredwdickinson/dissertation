@@ -248,3 +248,78 @@ def imla_step(x, dt, potential_int, noise_scale, beta, metropolise):
             next_x[m] = cur_x
             
     return next_x, total_accepts/M
+
+
+
+@njit
+def hmc_step(x, y, dt, potential_int, current_coulomb, current_H_N, beta, gamma_N =1.0, alpha_N =1.0):
+    """ 
+    Hybrid Monte Carlo step, scheme as in Chafai and Ferre.
+    Update momentum, propose with Leapfrog, accept/reject.
+    Note that current_H_N is referring to the *sum* of the current potential.
+    """
+
+    M, N = x.shape
+    beta_N = beta * N
+    
+    # Update momentum, vectorised.
+    eta = np.exp(-gamma_N*alpha_N*dt)
+    sdn = np.sqrt((1- eta**2)/beta_N)
+    noise = np.random.normal(0.0, 1.0, x.shape)
+    y_tilde = eta*y + sdn*noise
+    
+    # Verlet proposal vectorised because current_coulomb already known.
+    v_prime = evaluate_force(x, potential_int, 1)
+    grad_H_current = 1/2*v_prime - current_coulomb
+    y_leapfrog = y_tilde - grad_H_current*(alpha_N*dt/2.0)
+    x_prop = x + y_leapfrog*(alpha_N*dt)
+    
+    # Pre-allocate outputs.
+    next_x = np.copy(x); next_y = np.copy(y_tilde) 
+    next_coulomb = np.copy(current_coulomb); next_H_N = np.copy(current_H_N)
+    total_accepts = 0; total_cross_rejects = 0;
+    
+    # Trial by trial for accept/reject.
+    for m in range(M):
+        # Check for potential crossings.
+        crossing = False
+        for i in range(N - 1):
+            if (x_prop[m, i] >= x_prop[m, i+1]):
+                crossing = True
+                break
+        
+        if crossing:
+            total_cross_rejects += 1
+            next_y[m] = -y_tilde[m] # Momentum is flipped.
+            continue # Early exit.
+        
+        # No crossing, proceed with standard accept/reject logic.
+        v_prime_prop = evaluate_force(x_prop[m], potential_int, 1)
+        coulomb_prop = coulomb_interaction(x_prop[m])
+        grad_H_prop= 1/2*v_prime_prop - coulomb_prop
+        y_prop = y_leapfrog[m] - grad_H_prop*(alpha_N*dt/2.0)
+        
+        # Evaluate Proposal Energy.
+        V_prop = evaluate_force(x_prop[m], potential_int, 0) 
+        log_repulsion_prop = log_repulsion(x_prop[m])
+        sum_ham_prop = np.sum(V_prop)/2 - np.sum(log_repulsion_prop)
+
+        current_total_H = current_H_N[m] + 1/2*np.sum(y_tilde[m]**2)
+        prop_total_H = sum_ham_prop + 0.5*np.sum(y_prop**2)
+        energy_diff = prop_total_H - current_total_H
+
+        if np.isnan(energy_diff):
+            next_y[m] = -y_tilde[m]
+            continue
+        
+        log_prob = -beta_N*energy_diff 
+        if (np.log(np.random.random()) < log_prob):
+            next_x[m] = x_prop[m]
+            next_y[m] = y_prop
+            next_coulomb[m] = coulomb_prop 
+            next_H_N[m] = sum_ham_prop
+            total_accepts += 1
+        else:
+            next_y[m] = -y_tilde[m]
+            
+    return next_x, next_y, next_coulomb, next_H_N, total_accepts/M, total_cross_rejects/M

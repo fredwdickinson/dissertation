@@ -95,6 +95,43 @@ def make_mala_pipeline(N, dt, potential_type, beta):
 
     return pipeline
 
+def make_hmc_pipeline(N, dt, potential_type, beta):
+    """ 
+    Step pipeline for the hybrid Monte Carlo algorithm (Chafai and Ferre).
+    For now alpha_n and gamma_n are taken as default (both 1).
+    As with MALA, keeps Coulomb/Hamiltonian calculations to avoid recalculating on rejects.
+    """
+
+    current_y = None; current_coulomb = None; current_H_N = None 
+    potential_int = potential_ints[potential_type]
+
+    def pipeline(state):
+        nonlocal current_y, current_coulomb, current_H_N
+        
+        # Initialisation (only on first time step).
+        if (current_y is None):
+            current_y = np.random.normal(0, 1, state.shape)
+        if (current_coulomb is None):
+            current_coulomb = forces.coulomb_interaction(state)
+
+        if (current_H_N is None):
+            # NOTE Should make a forces function to evaluate Hamiltonian.
+            M = state.shape[0]
+            current_H_N = np.zeros(M)
+            for m in range(M):
+                V_init = forces.evaluate_force(state[m], potential_int, 0)
+                log_rep = forces.log_repulsion(state[m])
+                current_H_N[m] = 0.5*np.sum(V_init) - np.sum(log_rep)
+
+        next_x, next_y, next_coulomb, next_H_N_out, accepts, cross_rejects = integrators.hmc_step(
+            state, current_y, dt, potential_int, current_coulomb, current_H_N, beta
+        )
+
+        current_y = next_y; current_coulomb = next_coulomb; current_H_N = next_H_N_out
+        return next_x, {"accepts": accepts, "cross_rejects": cross_rejects}
+
+    return pipeline
+
 # ==========================================================================================================
 
 def simulate_dbm(init, steps, step_pipeline):

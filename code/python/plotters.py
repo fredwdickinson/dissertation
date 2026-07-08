@@ -8,12 +8,13 @@ def plot_hist(ax, particles, num_bins = 100, with_limit = True, potential_name =
     """
     Histogram plotter.
     """
-
-    density_range, limiting_density = get_density(potential_name)
     ax.hist(particles, bins = num_bins, density = True, color = "steelblue", edgecolor = "black", alpha = 0.75)
-    ax.plot(density_range, limiting_density, color = "red", lw = 1.5)
-    ax.grid(False)
 
+    if (with_limit):
+        density_range, limiting_density = get_density(potential_name)
+        ax.plot(density_range, limiting_density, color = "red", lw = 1.5)
+
+    ax.grid(False)
     return ax
 
 def plot_accepts(ax, accepts):
