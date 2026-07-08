@@ -1,5 +1,11 @@
 import numpy as np
-from python.forces import potential_quadratic, potential_quad_quartic, potential_quartic
+from python.forces import get_force_func, evaluate_force
+
+potential_ints = {
+    "quadratic": 0,
+    "quad-quartic": 1,
+    "quartic": 2
+}
 
 """
 Same densities file as before refactor: far less need for Numba here too.
@@ -69,15 +75,7 @@ def compute_exact_cdf(N, potential, grid, cdf_tol = 0.05):
     See (2.5) in Li and Menon.
     """
 
-    if (potential == "quadratic"):
-        potential_func = potential_quadratic
-    if (potential == "quad-quartic"):
-        potential_func = potential_quad_quartic
-    if (potential == "quartic"):
-        potential_func = potential_quartic
-    else:
-        raise ValueError(f"Do not know potential type {potential}.")
-
+    potential_func = get_force_func(potential_ints[potential], 0)
     pis, c_sqrs = orthogonal_polys(N, potential_func, grid)
     K_N = construct_kernel(N, potential_func, grid, pis, c_sqrs)
     rho_N = np.diagonal(K_N) / N 
@@ -92,6 +90,7 @@ def compute_exact_cdf(N, potential, grid, cdf_tol = 0.05):
     
     F_exact = F_exact / F_exact[-1]
     return F_exact
+
 
 def compute_empirical_cdf(particles, grid):
     """ 
@@ -190,3 +189,8 @@ def compute_distance(P, Q, grid, distance_type = "ks", p = 1):
     elif (distance_type == "kl"):
         distance = 23
         raise NotImplementedError("Implement KL (densities.py).")
+    
+
+# NOTE Needs a clean up but for now use exact semicircle pdf.
+def exact_semicircle_cdf(x, R = 2):
+    return 1/2 + (x*np.sqrt(R**2 - x**2))/(np.pi*R**2) + np.arcsin(x/R)/np.pi

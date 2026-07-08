@@ -12,7 +12,6 @@ def euler_step(x, coulomb, v_prime, dt, noise_scale):
     noise = np.random.normal(0.0, 1.0, x.shape)
     return x + drift*dt + noise_scale*noise
 
-
 @njit
 def tamed_euler_step(x, coulomb, v_prime, dt, noise_scale):
     # Tamed Euler step as by Li and Menon.
@@ -23,7 +22,6 @@ def tamed_euler_step(x, coulomb, v_prime, dt, noise_scale):
     noise = np.random.normal(0, 1, x.shape)
 
     return x + drift*dt + noise_scale*noise
-
 
 @njit
 def implicit_newton_step(x, dt, potential_int, noise_scale):
@@ -39,18 +37,17 @@ def implicit_newton_step(x, dt, potential_int, noise_scale):
     next_x = np.zeros_like(x)
     z = np.zeros_like(x) # NOTE pre-compute all starting? 
 
-    # Each trial is independent.
+    # Newton solver tolerance.
     max_iter, tol = 20, 1e-6 # Hard coded, can change tol to be smaller if needed.
     for m in range(M):
         z[m] = np.sort(x[m] + noise_scale*np.random.normal(0.0, 1.0, N))
         current_x = np.copy(z[m])
 
         for _ in range(max_iter):
-            # Clear existing arrays, compute Hess/coulomb in the same loop.
+            # Clear existing arrays, recompute Hessian and Coulomb.
             coulomb.fill(0.0); hess.fill(0.0);
             v_prime = evaluate_force(current_x, potential_int, 1)
             v_double_prime = evaluate_force(current_x, potential_int, 2)
-
             diags = 1.0/dt + 1/2*v_double_prime # to add to diags below
 
             # Construct Hessian and Coulomb in same loop.
@@ -76,10 +73,10 @@ def implicit_newton_step(x, dt, potential_int, noise_scale):
             if (np.max(np.abs(nablaG)) < tol):
                 break
             
-            y = cg_jacobi(hess, nablaG)
+            y = cg_jacobi(hess, nablaG) # CG solver for inverse Hessian.
             current_x = current_x - y
         
-        # End of individual trial.
+        # End of Newton iteration,
         next_x[m] = current_x
         
     return next_x
@@ -106,9 +103,7 @@ def mala_step(x, dt, potential_int, coulomb, noise_scale, beta):
     for m in range(M):
         current_x = x[m]
         y_prop = y_proposed[m]
-        
-        # NOTE worth doing? - probably, might be expensive but saves on possible future cost.
-        # And lets us look at the number of rejects due to crossings explicitly.
+
         if np.any(np.diff(y_prop) <= 0):
             next_x[m] = current_x
             next_coulomb[m] = coulomb[m]

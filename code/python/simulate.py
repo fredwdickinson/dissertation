@@ -1,6 +1,7 @@
 import numpy as np
 import python.forces as forces
 import python.integrators as integrators
+from python.densities import compute_empirical_cdf, compute_distance
 
 potential_ints = {
     "quadratic": 0,
@@ -22,49 +23,55 @@ def get_pipeline(method, **kwargs):
     
 # ==========================================================================================================
     
-def make_euler_pipeline(dt, noise_scale, potential_type):
+def make_euler_pipeline(N, dt, potential_type, beta):
+    noise_scale = np.sqrt(2.0*dt/(beta*N))
+    potential_int = potential_ints[potential_type]
+
     def pipeline(state):
         coulomb = forces.coulomb_interaction(state)
-        v_prime_func = forces.get_force_func(potential_ints[potential_type], 1)
-        v_prime = v_prime_func(state)
+        v_prime = forces.evaluate_force(state, potential_int, 1)
 
         next_x = integrators.euler_step(state, coulomb, v_prime, dt, noise_scale)
         return next_x, {}
 
     return pipeline
 
-def make_tamed_pipeline(dt, noise_scale, potential_type):
+def make_tamed_pipeline(N, dt, potential_type, beta):
     # Step pipeline for tamed Euler.
+    noise_scale = np.sqrt(2.0*dt/(beta*N))
+    potential_int = potential_ints[potential_type]
+
     def pipeline(state):
         coulomb = forces.coulomb_interaction(state)
-        v_prime_func = forces.get_force_func(potential_ints[potential_type], 1)
-        v_prime = v_prime_func(state)
+        v_prime = forces.evaluate_force(state, potential_int, 1)
 
         next_x = integrators.tamed_euler_step(state, coulomb, v_prime, dt, noise_scale)
         return next_x, {}
 
     return pipeline
 
-def make_implicit_pipeline(dt, noise_scale, potential_type):
-    # Step pipeline for implicit methods: skips the Coulomb pre-computation.
+def make_implicit_pipeline(N, dt, potential_type, beta):
+    noise_scale = np.sqrt(2.0*dt/(beta*N))
+    potential_int = potential_ints[potential_type]
+
     def pipeline(state):
-        potential_int = potential_ints[potential_type]
         next_x = integrators.implicit_newton_step(state, dt, potential_int, noise_scale)
         return next_x, {}
     
     return pipeline
 
-def make_imla_pipeline(dt, noise_scale, potential_type, beta, metropolise):
-    # 
-    def pipeline(state):
-        potential_int = potential_ints[potential_type]
+def make_imla_pipeline(N, dt, potential_type, beta, metropolise = False):
+    noise_scale = np.sqrt(2.0*dt/(beta*N))
+    potential_int = potential_ints[potential_type]
+
+    def pipeline(state):        
         next_x, accepts = integrators.imla_step(state, dt, potential_int, noise_scale, beta, metropolise)
         return next_x, {"accepts": accepts}
     
     return pipeline
 
 
-def make_mala_pipeline(dt, noise_scale, potential_type, beta):
+def make_mala_pipeline(N, dt, potential_type, beta):
     """
     Step pipeline for MALA. 
     Maintains state of forces to avoid recalculation (hence the nonlocal).
@@ -72,6 +79,7 @@ def make_mala_pipeline(dt, noise_scale, potential_type, beta):
     
     current_coulomb = None
     potential_int = potential_ints[potential_type]
+    noise_scale = np.sqrt(2.0*dt/(beta*N))
 
     def pipeline(state):
         nonlocal current_coulomb
@@ -138,13 +146,14 @@ def imla_target_dt(init, total_steps, potential_int, beta, dt_init, target):
 # "Observers" that use the trajectory information.
 # collect_snapshots produces the hist every X after burn in, count_crossings looks for unique eigenvalue crossing, etc.
 
-def metropolis_experiment(trajectory, num_steps, burn_in = None, interval = None):
+# NOTE Should change to one master function that can then call others?
+
+def metropolis_experiment(trajectory, num_steps, burn_in = None, interval = 10):
     """ 
     Histogram plotter and acceptance rate.
     """
     if (burn_in is None):
-        burn_in = int(3/4*num_steps)
-        interval = int(num_steps / 20)
+        burn_in = int(1/2*num_steps)
 
     accepts = []; cross_rejects = [];
     snapshots = []
@@ -157,6 +166,32 @@ def metropolis_experiment(trajectory, num_steps, burn_in = None, interval = None
             accepts.append(info["accepts"])
 
     return np.concatenate(snapshots).flatten(), np.array(accepts)
+
+def collect_snapshots_distance(trajectory, grid, F_exact, num_steps, dt, burn_in = None, interval = 10):
+    """ 
+    Collects snapshots for empirical histogram *and* calculate distance metrics.
+    F_exact: exact target cdf for the given N. (If N > 50 use the limiting?).
+    """
+
+    if (burn_in is None):
+        burn_in = int(1/2*num_steps)
+
+    check_distance_interval = max(1, num_steps//240)
+
+    snapshots = []
+    history_times = []; history_distances = []
+
+    for step, (state, info) in enumerate(trajectory):
+        if (step % check_distance_interval == 0):
+            F_emp = compute_empirical_cdf(state.flatten(), grid)
+            # For now 1-Wasserstein, can change as desired.
+            distance = compute_distance(F_emp, F_exact, grid, distance_type = "wasserstein")
+            history_times.append(step*dt); history_distances.append(distance);
+
+        if (step > burn_in):
+            snapshots.append(state)
+
+    return np.concatenate(snapshots).flatten(), {"steps": history_times, "distances": history_distances}
 
 def collect_snapshots(trajectory, num_steps, burn_in = None, interval = None):
     """ 
@@ -174,20 +209,6 @@ def collect_snapshots(trajectory, num_steps, burn_in = None, interval = None):
             snapshots.append(np.copy(state))
 
     return np.concatenate(snapshots).flatten()
-
-def acceptance_rate(trajectory, burn_steps = 0):
-    """
-    
-    """
-
-    accepts = []; cross_rejects = [];
-    for step, (state, info) in enumerate(trajectory):
-        if (step > burn_steps):
-            accepts.append(info["accepts"])
-            cross_rejects.append(info["cross_rejects"])
-
-    return np.array(accepts), np.array(cross_rejects)
-
 
 def count_crossings(trajectory, step_star):
     """
