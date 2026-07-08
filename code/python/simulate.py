@@ -112,6 +112,111 @@ def simulate_dbm(init, steps, step_pipeline):
         state, info = step_pipeline(state)
         yield state, info
 
+def analyse_trajectory(trajectory, num_steps, dt = None, track_snapshots = True, burn_in = None, snapshot_interval = 10,
+                       track_accepts = False, track_crossings = False, step_star = None,
+                       track_distance = False, grid = None, F_exact = None, distance_interval = None, distance_type = "wasserstein"):
+    """ 
+    Master observe function (combined all previous here). By default only track_snapshots is True.
+        Snapshots: burn_in, defaults to 1/2 the num_steps.
+        Accepts: track_accepts, NOTE right now only MALA returns cross rejects.
+        Crossings: track_crossings, step_star.
+        Distances: track_distance, grid (that the true cdf is evaluated on), dt, F_exact.
+    """
+
+    # Defaults. 
+    if burn_in is None:
+        burn_in = num_steps//2
+        # Default snapshot interval is 10.
+
+    if distance_interval is None:
+        distance_interval = max(1, num_steps//240)
+        # Don't compute distances at every point.
+
+    # 
+    results = {}
+    if track_snapshots:
+        snapshots = []
+
+    if track_accepts:
+        accepts = []
+        cross_rejects = []
+
+    if track_distance:
+        if (grid is None) or (F_exact is None) or (dt is None):
+            raise ValueError("Must provide grid, F_exact, and dt to track distance.")
+        
+        history_times = []
+        history_distances = []
+
+    if track_crossings:
+        if step_star is None:
+            raise ValueError("Must provide step_star to track crossings.")
+        
+        prev_ordering = None
+        crossings_per_trial = None
+
+    # Single pass through the generator.
+    # Info is a dictionary: check keys. 
+    # NOTE Check the logic with step==0? Should it be step==step_star - 1?
+    for step, (state, info) in enumerate(trajectory):
+        # Crossings.
+        if track_crossings:
+            if (step == step_star - 1):
+                # Determine ordering at T=0.
+                prev_ordering = (state[:, :, None] < state[:, None, :])
+
+            elif (step == step_star):
+                current_ordering = (state[:, :, None] < state[:, None, :])
+                flips = (current_ordering != prev_ordering)
+
+                # k is teh diagonal offset.
+                mask = np.triu(np.ones((state.shape[1], state.shape[1]), dtype = bool), k = 1)
+                crossings_per_trial = np.sum(flips & mask, axis = (1, 2))
+
+        # Distance: default is 1-Wasserstein.
+        if (track_distance) and (step % distance_interval == 0):
+            F_emp = compute_empirical_cdf(state.flatten(), grid)
+            distance = compute_distance(F_emp, F_exact, grid, distance_type = distance_type)
+            history_times.append(step*dt)
+            history_distances.append(distance)
+
+        # Snapshots (for histogram): default every 10 after half steps.
+        if (track_snapshots) and (step >= burn_in) and ((step - burn_in) % snapshot_interval == 0):
+            snapshots.append(np.copy(state))
+
+        # Acceptance.
+        if (track_accepts) and (step > 0):
+            if "accepts" in info:
+                accepts.append(info["accepts"])
+            if "cross_rejects" in info:
+                cross_rejects.append(info["cross_rejects"])
+
+    # End of trajectory loop, compile the dictionary and return.
+    if track_snapshots:
+        results["snapshots"] = np.concatenate(snapshots).flatten()
+    
+    if track_accepts:
+        results["accepts"] = np.array(accepts)
+        if cross_rejects:
+            results["cross_rejects"] = np.array(cross_rejects)
+            
+    if track_distance:
+        results["distance_times"] = np.array(history_times)
+        results["distances"] = np.array(history_distances)
+        
+    if track_crossings:
+        if (crossings_per_trial is None):
+            raise ValueError(f"Trajectory finished before reaching step_star ({step_star}).")
+        
+        results["crossings"] = crossings_per_trial
+
+    return results
+
+
+# ==========================================================================================================
+# ==========================================================================================================
+# ==========================================================================================================
+
 def imla_target_dt(init, total_steps, potential_int, beta, dt_init, target):
     """
     Generator that yields dt and accept rate (no particles).
@@ -142,94 +247,3 @@ def imla_target_dt(init, total_steps, potential_int, beta, dt_init, target):
 
         yield step_idx, dt, accept_rate
 
-# ====================================================================================================================
-# "Observers" that use the trajectory information.
-# collect_snapshots produces the hist every X after burn in, count_crossings looks for unique eigenvalue crossing, etc.
-
-# NOTE Should change to one master function that can then call others?
-
-def metropolis_experiment(trajectory, num_steps, burn_in = None, interval = 10):
-    """ 
-    Histogram plotter and acceptance rate.
-    """
-    if (burn_in is None):
-        burn_in = int(1/2*num_steps)
-
-    accepts = []; cross_rejects = [];
-    snapshots = []
-    for step, (state, info) in enumerate(trajectory):
-        # For histogram.
-        if (step >= burn_in) and ((step - burn_in) % interval == 0):
-            snapshots.append(np.copy(state))
-
-        if (step > 0):
-            accepts.append(info["accepts"])
-
-    return np.concatenate(snapshots).flatten(), np.array(accepts)
-
-def collect_snapshots_distance(trajectory, grid, F_exact, num_steps, dt, burn_in = None, interval = 10):
-    """ 
-    Collects snapshots for empirical histogram *and* calculate distance metrics.
-    F_exact: exact target cdf for the given N. (If N > 50 use the limiting?).
-    """
-
-    if (burn_in is None):
-        burn_in = int(1/2*num_steps)
-
-    check_distance_interval = max(1, num_steps//240)
-
-    snapshots = []
-    history_times = []; history_distances = []
-
-    for step, (state, info) in enumerate(trajectory):
-        if (step % check_distance_interval == 0):
-            F_emp = compute_empirical_cdf(state.flatten(), grid)
-            # For now 1-Wasserstein, can change as desired.
-            distance = compute_distance(F_emp, F_exact, grid, distance_type = "wasserstein")
-            history_times.append(step*dt); history_distances.append(distance);
-
-        if (step > burn_in):
-            snapshots.append(state)
-
-    return np.concatenate(snapshots).flatten(), {"steps": history_times, "distances": history_distances}
-
-def collect_snapshots(trajectory, num_steps, burn_in = None, interval = None):
-    """ 
-    Looks at the trajectory's positions every 10th step after a long burn-in period.
-    Room to change the burn-in or interval as parameters.
-    """
-
-    if (burn_in is None):
-        burn_in = int(1/2*num_steps)
-        interval = 10
-
-    snapshots = []
-    for step, (state, info) in enumerate(trajectory):
-        if (step >= burn_in) and ((step - burn_in) % interval == 0):
-            snapshots.append(np.copy(state))
-
-    return np.concatenate(snapshots).flatten()
-
-def count_crossings(trajectory, step_star):
-    """
-    Determines how many particles cross across all trials in a simulation at T_star (give step_star).
-    Returns the total number of crossings.
-    """
-    total_crossings = 0
-    prev_ordering = None
-
-    for step, (state, info) in enumerate(trajectory):
-        if (step == 0):
-            prev_ordering = (state[:, :, None] < state[:, None, :])
-        elif (step == step_star):
-            # Similar to before, but handles all trials at once.
-            current_ordering = (state[:, :, None] < state[:, None, :])
-            flips = (current_ordering != prev_ordering)
-
-            # k is the diagonal offset.
-            mask = np.triu(np.ones((state.shape[1], state.shape[1]), dtype = bool), k = 1)
-            per_trial_arr = np.sum(flips & mask, axis = (1, 2))
-
-            return per_trial_arr
-        
-    raise ValueError(r"Never reached $T^*$ in count_crossings().")
