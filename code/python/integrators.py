@@ -40,7 +40,7 @@ def implicit_newton_step(x, dt, potential_int, noise_scale):
     # Newton solver tolerance.
     max_iter, tol = 20, 1e-6 # Hard coded, can change tol to be smaller if needed.
     for m in range(M):
-        z[m] = np.sort(x[m] + noise_scale*np.random.normal(0.0, 1.0, N))
+        z[m] = x[m] + noise_scale*np.random.normal(0.0, 1.0, N)
         current_x = np.copy(z[m])
 
         for _ in range(max_iter):
@@ -199,21 +199,55 @@ def imla_step(x, dt, potential_int, current_coulomb, current_H_N, beta, noise_sc
             trial_cg_iters += cg_iters 
 
             # Backtracking in the midpoint method.
-            newton_step_size = 1.0; min_step = 0.125
-            y_try = y - step 
-    
-            while (newton_step_size >= min_step):
-                y_try = y - newton_step_size*step
-                if np.all(np.diff(y_try) > 1e-12):
-                    break 
-                newton_step_size *= 0.5
+            current_residual_norm = np.sum(nablaG*nablaG)
+            alpha = 1.0; min_alpha = 1/16
+            line_search_success = False 
+            y_try = np.zeros_like(y)
+
+            while (alpha >= min_alpha):
+                # Propose y - alpha*step.
+                for i in range(N):
+                    y_try[i] = y[i] - alpha*step[i]
                 
-            y = y_try
+                # Check to see if crossings.
+                crossings = False
+                for i in range(N - 1):
+                    if (y_try[i + 1] - y_try[i] < 0):
+                        crossings = True # Here tolerance instead of genuine crossing.
+
+                if (not crossings):
+                    # Need sufficient decrease condition: recalculate residual norm at suggested.
+                    u_try = (y_try + cur_x)/2.0
+                    v_prime_try = evaluate_force(u_try, potential_int, 1)
+                    coulomb_try = coulomb_interaction(u_try)
+
+                    nablaG_try = (y_try - z[m])/dt - coulomb_try + 0.5*v_prime_try 
+                    try_residual_norm = np.sum(nablaG_try*nablaG_try)
+
+                    if (try_residual_norm <= current_residual_norm):
+                        line_search_success = True 
+                        break 
+                        
+                    print(f"Was not sufficient decrease.")
+                
+                # If crossings, or not sufficient decrease, half line search step.
+                alpha = alpha*0.5
+
+            if (line_search_success):
+                y = y_try 
+            else:
+                # No improvement to residual, so break early, will reject later.
+                break 
+            
             # End Newton iteration loop.
         
         # Average cg iterations per Newton iteration for this trial.
         mean_cg_iterations[m] = trial_cg_iters/newton_iterations[m]
 
+        if (not line_search_success):
+            # Abort this trial. Don't need to update.
+            continue
+        
         crossing = False 
         for i in range(N - 1):
             if (y[i] >= y[i + 1]):
@@ -234,6 +268,7 @@ def imla_step(x, dt, potential_int, current_coulomb, current_H_N, beta, noise_sc
 
         if (not metropolise):
             # IMLA: always accept proposal.
+            # NOTE This shouuld be moved above the calculations that are unnecessary: for IMLA just pass whatever?
             next_x[m] = y; next_coulomb[m] = coulomb_y; next_H_N[m] = sum_ham_y
             total_accepts += 1; total_crossing_rejects += int(crossing)
             continue

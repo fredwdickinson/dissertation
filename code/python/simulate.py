@@ -160,7 +160,8 @@ def simulate_dbm(init, steps, step_pipeline):
 
 def analyse_trajectory(trajectory, num_steps, dt = None, track_snapshots = True, burn_in = None, snapshot_interval = 10,
                        track_accepts = False, track_crossings = False, step_star = None,
-                       track_distance = False, grid = None, F_exact = None, distance_interval = None, distance_type = "wasserstein"):
+                       track_distance = False, grid = None, F_exact = None, distance_interval = None, distance_type = "wasserstein",
+                       track_newton_iters = False):
     """ 
     Master observe function (combined all previous here). By default only track_snapshots is True.
         Snapshots: burn_in, defaults to 1/2 the num_steps.
@@ -201,6 +202,10 @@ def analyse_trajectory(trajectory, num_steps, dt = None, track_snapshots = True,
         prev_ordering = None
         crossings_per_trial = None
 
+    if track_newton_iters:
+        newton_iters = []
+        mean_cg_iters = []
+        
     # Single pass through the generator.
     # Info is a dictionary: check keys. 
     # NOTE Check the logic with step==0? Should it be step==step_star - 1?
@@ -237,6 +242,13 @@ def analyse_trajectory(trajectory, num_steps, dt = None, track_snapshots = True,
             if ("cross_rejects" in info):
                 cross_rejects.append(info["cross_rejects"])
 
+        # Newton iterations.
+        if (track_newton_iters):
+            if ("newton_iters" in info):
+                newton_iters.append(info["newton_iters"])
+            if ("mean_cg_iters" in info): 
+                mean_cg_iters.append(info["mean_cg_iters"])
+
     # End of trajectory loop, compile the dictionary and return.
     if track_snapshots:
         results["snapshots"] = np.concatenate(snapshots).flatten()
@@ -255,6 +267,10 @@ def analyse_trajectory(trajectory, num_steps, dt = None, track_snapshots = True,
             raise ValueError(f"Trajectory finished before reaching step_star ({step_star}).")
         
         results["crossings"] = crossings_per_trial
+    
+    if track_newton_iters:
+        results["newton_iters"] = np.array(newton_iters)
+        results["mean_cg_iters"] = np.array(mean_cg_iters)
 
     return results
 
