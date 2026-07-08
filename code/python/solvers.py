@@ -8,6 +8,8 @@ def cg_jacobi(A, b, tol = 1e-6, max_iter = 50):
     Numba code: lots of for loops. 
     """
 
+    total_iterations = 0;
+
     N = b.shape[0]; x = np.zeros(N)
     r = b.copy() # Since b - Ax = b - A0 = b.
 
@@ -23,6 +25,8 @@ def cg_jacobi(A, b, tol = 1e-6, max_iter = 50):
     rz = np.dot(r, z)
 
     for k in range(max_iter):
+        total_iterations += k
+
         # Compute Ap
         for i in range(N):
             temp = 0
@@ -58,5 +62,5 @@ def cg_jacobi(A, b, tol = 1e-6, max_iter = 50):
         
         rz = next_rz
 
-    return x
+    return x, total_iterations
         

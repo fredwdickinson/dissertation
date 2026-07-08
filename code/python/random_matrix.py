@@ -4,6 +4,13 @@ import numpy as np
 No need for any Numba here.
 """
 
+def init_random_eigenvalues(M, N):
+    """
+    Generates M independent trials of random eigenvalues.
+    """
+
+    return np.random.normal(0, 1, (M, N))
+
 def init_gue_eigenvalues(M, N):
     """ 
     Generates M independent trials of GUE eigenvalues.

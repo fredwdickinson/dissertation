@@ -82,94 +82,91 @@ def implicit_newton_step(x, dt, potential_int, noise_scale):
     return next_x
 
 @njit
-def mala_step(x, dt, potential_int, coulomb, noise_scale, beta):
+def mala_step(x, dt, potential_int, current_coulomb, current_H_N, beta, noise_scale):
     """
     Propose using Euler-Maruyama, then accept/reject.
     Needs pure potential from forces.py as well as v_prime.
     """
 
-    v_prime = evaluate_force(x, potential_int, 1)
-
     M, N = x.shape
     total_accepts = 0; total_crossing_rejects = 0;
-    next_x = np.zeros_like(x)
-    next_coulomb = np.zeros_like(coulomb)
+    next_x = np.copy(x); next_coulomb = np.copy(current_coulomb); next_H_N = np.copy(current_H_N);
 
     # Proposed step: Euler-Maruyama.
-    drift = coulomb - 1/2*v_prime
+    v_prime = evaluate_force(x, potential_int, 1)
+    grad_H_current = current_coulomb - 1/2*v_prime
     noise = np.random.normal(0, 1, x.shape)
-    y_proposed = x + drift*dt + noise_scale*noise
+    y_proposed = x + grad_H_current*dt + noise_scale*noise
   
     for m in range(M):
         current_x = x[m]
         y_prop = y_proposed[m]
 
-        if np.any(np.diff(y_prop) <= 0):
-            next_x[m] = current_x
-            next_coulomb[m] = coulomb[m]
+        crossing = False 
+        for i in range(N - 1):
+            if (y_prop[i] >= y_prop[i + 1]):
+                crossing = True 
+                break 
+
+        if (crossing):
             total_crossing_rejects += 1
+            next_x[m] = current_x 
+            next_coulomb[m] = current_coulomb[m]
             continue
-        
-        v_x = evaluate_force(current_x, potential_int, 0); v_y = evaluate_force(y_prop, potential_int, 0)
-        v_prime_y = evaluate_force(y_prop, potential_int, 1)
+
+        # No crossing, proceed with standard accept/reject logic.
+        v_y = evaluate_force(y_prop, potential_int, 0); v_prime_y = evaluate_force(y_prop, potential_int, 1)
         coulomb_y = coulomb_interaction(y_prop)      
         drift_y = coulomb_y - 1/2*v_prime_y # enough for grad H_N
         
-        # Now construct H_N.
-        log_repulsion_x = log_repulsion(current_x) # Returns ndarray, includes /N.
+        # Now construct proposed H_N and the forward/backward q(x, y).
         log_repulsion_y = log_repulsion(y_prop)
-
-        sum_ham_x = np.sum(v_x)/2 - np.sum(log_repulsion_x)
         sum_ham_y = np.sum(v_y)/2 - np.sum(log_repulsion_y)
+        sum_ham_x = current_H_N[m] # Avoid recalculating for the log repulsion cost.
 
-        log_q_x_y = np.sum((current_x - y_prop + drift[m]*dt)**2) # backwards
+        log_q_x_y = np.sum((current_x - y_prop + grad_H_current[m]*dt)**2) # backwards
         log_q_y_x = np.sum((y_prop - current_x + drift_y*dt)**2) # forwards
+        log_alpha = -beta*N*(sum_ham_y - sum_ham_x) + 1/(2*noise_scale**2)*(log_q_x_y - log_q_y_x)
 
-        log_alpha = -beta*N*(sum_ham_y - sum_ham_x) - 1/(2*noise_scale**2)*(log_q_x_y - log_q_y_x)
-
-        # Accept/reject, return the Coulomb!
+        # If accept, update, otherwise keep coulomb.
         if (np.log(np.random.random()) < log_alpha):
             next_x[m] = y_prop
             next_coulomb[m] = coulomb_y
+            next_H_N[m] = sum_ham_y
             total_accepts += 1
-        else:
-            next_x[m] = current_x 
-            next_coulomb[m] = coulomb[m]  
 
-    return next_x, next_coulomb, total_accepts/M, total_crossing_rejects/M
+    return next_x, next_coulomb, next_H_N, total_accepts/M, total_crossing_rejects/M
 
 
 @njit
-def imla_step(x, dt, potential_int, noise_scale, beta, metropolise):
+def imla_step(x, dt, potential_int, current_coulomb, current_H_N, beta, noise_scale, metropolise, newton_tol):
     """
-    Metropolise is boolean.
+    Metropolise is a boolean.
     See NOTE s. Want to reuse Coulomb/Hess code. Some inefficiencies e.g. can reuse Coulomb.
     """ 
 
     M, N = x.shape
-    total_accepts = 0
-    total_crossing_rejects = 0 # NOTE currently not implemented.
+    total_accepts = 0; total_crossing_rejects = 0; # NOTE currently not implemented.
+    newton_iterations = np.zeros(M); mean_cg_iterations = np.zeros(M);
 
-    coulomb = np.zeros(N); hess = np.zeros((N, N))
-    next_x = np.zeros_like(x)
-    z = np.zeros_like(x) # NOTE pre-compute all starting noises?
+    # Not to be confused with the midpoint Coulomb/Hessian.
+    next_x = np.copy(x); next_coulomb = np.copy(current_coulomb); next_H_N = np.copy(current_H_N);
+    coulomb_midpoint = np.zeros(N); hess = np.zeros((N, N)) # For the Newton solver.
     
-    max_iter, tol = 25, 1e-5
+    noise = np.random.normal(0.0, 1.0, x.shape)
+    z = x + noise_scale*noise
+
+    max_newton_iter = 25 # Hard coded: tolerance changed to be parameter.
+
     for m in range(M):
         cur_x = x[m]
-        z[m] = np.sort(cur_x + noise_scale*np.random.normal(0.0, 1.0, N))
+        y = np.copy(z[m])
+        trial_cg_iters = 0 # Per trial.
 
-        # NOTE Starting guess at noise (as implicit does).
-        y = np.copy(z[m]); # x = lambda^n, y = lambda^(n+1). 
-
-        for _ in range(max_iter):
-            """
-            if (_ > 20):
-                # NOTE testing, should never really reach for 1e-3...
-                print(f"iter {_} of Newton.")
-            """
-          
-            coulomb.fill(0.0); hess.fill(0.0);
+        for _ in range(max_newton_iter):
+            # NOTE Here check the total Newton iterations.
+            newton_iterations[m] += 1
+            coulomb_midpoint.fill(0.0); hess.fill(0.0);
 
             u = (y + cur_x) / 2.0 # Midpoint (theta = 1/2).
             v_prime = evaluate_force(u, potential_int, 1)
@@ -191,14 +188,15 @@ def imla_step(x, dt, potential_int, noise_scale, beta, metropolise):
                         diag_sum_i += 0.5*inv_sq 
                 
                 # Finish Coulomb/Hessian construction.
-                coulomb[i] = force_i/N 
+                coulomb_midpoint[i] = force_i/N 
                 hess[i, i] = diag_sum_i/N + diags[i]
 
-            nablaG = (y - z[m])/dt - coulomb + 0.5*v_prime
-            if (np.max(np.abs(nablaG)) < tol):
+            nablaG = (y - z[m])/dt - coulomb_midpoint + 0.5*v_prime
+            if (np.max(np.abs(nablaG)) < newton_tol):
                 break
 
-            step = cg_jacobi(hess, nablaG)
+            step, cg_iters = cg_jacobi(hess, nablaG) # NOTE add cg_iters.
+            trial_cg_iters += cg_iters 
 
             # Backtracking in the midpoint method.
             newton_step_size = 1.0; min_step = 0.125
@@ -210,45 +208,52 @@ def imla_step(x, dt, potential_int, noise_scale, beta, metropolise):
                     break 
                 newton_step_size *= 0.5
                 
-            # NOTE Add code here for crossing rejects.
-            # Break early. Remove the sort on z[m]
-                
             y = y_try
             # End Newton iteration loop.
+        
+        # Average cg iterations per Newton iteration for this trial.
+        mean_cg_iterations[m] = trial_cg_iters/newton_iterations[m]
+
+        crossing = False 
+        for i in range(N - 1):
+            if (y[i] >= y[i + 1]):
+                crossing = True 
+                break 
+
+        if (crossing and metropolise):
+            # Do not reject if standard IMLA.
+            total_crossing_rejects += 1
+            continue
+
+        v_y = evaluate_force(y, potential_int, 0)        
+        log_repulsion_y = log_repulsion(y)
+        coulomb_y = coulomb_interaction(y)
+        
+        sum_ham_y = np.sum(v_y)/2 - np.sum(log_repulsion_y)
+        sum_ham_x = current_H_N[m] # Stored from last step.
 
         if (not metropolise):
-            # IMLA: accept proposal.
-            next_x[m] = y
-           #  next_coulomb[m] = current_coulomb
-            total_accepts += 1
+            # IMLA: always accept proposal.
+            next_x[m] = y; next_coulomb[m] = coulomb_y; next_H_N[m] = sum_ham_y
+            total_accepts += 1; total_crossing_rejects += int(crossing)
             continue
         
         # MAIMLA: proposal created, now accept/reject.
         # Need to construct H_N AND grad H_N in terms of (cur_x, y_prop).
-        v_x = evaluate_force(cur_x, potential_int, 0); v_y = evaluate_force(y, potential_int, 0)        
-        log_repulsion_x = log_repulsion(cur_x); log_repulsion_y = log_repulsion(y)
-
         u = (cur_x + y)/2
         v_prime_u = evaluate_force(u, potential_int, 1)
         coulomb_u = coulomb_interaction(u)
 
         # (y - x)*grad H_N(u)
         log_q_ratio = beta*N*np.sum((y - cur_x)*(1/2*v_prime_u - coulomb_u))
-
-        sum_ham_x = np.sum(v_x)/2 - np.sum(log_repulsion_x)
-        sum_ham_y = np.sum(v_y)/2 - np.sum(log_repulsion_y)
         log_pi_ratio = -beta*N*(sum_ham_y - sum_ham_x) 
-
         log_alpha = log_pi_ratio + log_q_ratio
 
         if (np.log(np.random.random()) < log_alpha):
-            next_x[m] = y
+            next_x[m] = y; next_coulomb[m] = coulomb_y; next_H_N[m] = sum_ham_y
             total_accepts += 1
-        else:
-            next_x[m] = cur_x
-            
-    return next_x, total_accepts/M
 
+    return next_x, next_coulomb, next_H_N, total_accepts/M, total_crossing_rejects/M, newton_iterations, mean_cg_iterations
 
 
 @njit
@@ -260,12 +265,12 @@ def hmc_step(x, y, dt, potential_int, current_coulomb, current_H_N, beta, gamma_
     """
 
     M, N = x.shape
-    beta_N = beta * N
+    beta_N = beta*N # NOTE Needs changing if generalising to other 
     
     # Update momentum, vectorised.
     eta = np.exp(-gamma_N*alpha_N*dt)
     sdn = np.sqrt((1- eta**2)/beta_N)
-    noise = np.random.normal(0.0, 1.0, x.shape)
+    noise = np.random.normal(0, 1, x.shape)
     y_tilde = eta*y + sdn*noise
     
     # Verlet proposal vectorised because current_coulomb already known.
@@ -284,7 +289,7 @@ def hmc_step(x, y, dt, potential_int, current_coulomb, current_H_N, beta, gamma_
         # Check for potential crossings.
         crossing = False
         for i in range(N - 1):
-            if (x_prop[m, i] >= x_prop[m, i+1]):
+            if (x_prop[m, i] >= x_prop[m, i + 1]):
                 crossing = True
                 break
         

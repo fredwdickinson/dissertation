@@ -60,14 +60,26 @@ def make_implicit_pipeline(N, dt, potential_type, beta):
     
     return pipeline
 
-def make_imla_pipeline(N, dt, potential_type, beta, metropolise = False):
+def make_imla_pipeline(N, dt, potential_type, beta, metropolise = False, newton_tol = 1e-5):
     noise_scale = np.sqrt(2.0*dt/(beta*N))
+    current_coulomb = None; current_H_N = None;
     potential_int = potential_ints[potential_type]
-
-    def pipeline(state):        
-        next_x, accepts = integrators.imla_step(state, dt, potential_int, noise_scale, beta, metropolise)
-        return next_x, {"accepts": accepts}
     
+    def pipeline(state):        
+        nonlocal current_coulomb, current_H_N
+        # Initialisation (only on first time step).
+        if (current_coulomb is None):
+            current_coulomb = forces.coulomb_interaction(state)
+        if (current_H_N is None):
+            current_H_N = forces.sum_hamiltonian(state, potential_int)
+
+        next_x, next_coulomb, next_H_N, accepts, crossing_rejects, newton_iters, mean_cg_iters  = integrators.imla_step(
+            state, dt, potential_int, current_coulomb, current_H_N, beta, noise_scale, metropolise, newton_tol
+        )
+
+        current_coulomb = next_coulomb; current_H_N = next_H_N;
+        return next_x, {"accepts": accepts, "cross_rejects": crossing_rejects, "newton_iters": newton_iters, "mean_cg_iters": mean_cg_iters}
+        
     return pipeline
 
 
@@ -77,20 +89,24 @@ def make_mala_pipeline(N, dt, potential_type, beta):
     Maintains state of forces to avoid recalculation (hence the nonlocal).
     """
     
-    current_coulomb = None
+    current_coulomb = None; current_H_N = None;
     potential_int = potential_ints[potential_type]
     noise_scale = np.sqrt(2.0*dt/(beta*N))
 
     def pipeline(state):
-        nonlocal current_coulomb
+        nonlocal current_coulomb, current_H_N
         
         # Only calculate on first step.
         if (current_coulomb is None):
             current_coulomb = forces.coulomb_interaction(state)
+        if (current_H_N is None):
+            current_H_N = forces.sum_hamiltonian(state, potential_int)
 
-        next_x, next_coulomb, accepts, crossing_rejects = integrators.mala_step(state, dt, potential_int, current_coulomb, noise_scale, beta)
+        next_x, next_coulomb, next_H_N, accepts, crossing_rejects = integrators.mala_step(
+            state, dt, potential_int, current_coulomb, current_H_N, beta, noise_scale
+        )
 
-        current_coulomb = next_coulomb
+        current_coulomb = next_coulomb; current_H_N = next_H_N;
         return next_x, {"accepts": accepts, "cross_rejects": crossing_rejects}
 
     return pipeline
@@ -113,15 +129,8 @@ def make_hmc_pipeline(N, dt, potential_type, beta):
             current_y = np.random.normal(0, 1, state.shape)
         if (current_coulomb is None):
             current_coulomb = forces.coulomb_interaction(state)
-
         if (current_H_N is None):
-            # NOTE Should make a forces function to evaluate Hamiltonian.
-            M = state.shape[0]
-            current_H_N = np.zeros(M)
-            for m in range(M):
-                V_init = forces.evaluate_force(state[m], potential_int, 0)
-                log_rep = forces.log_repulsion(state[m])
-                current_H_N[m] = 0.5*np.sum(V_init) - np.sum(log_rep)
+            current_H_N = forces.sum_hamiltonian(state, potential_int)
 
         next_x, next_y, next_coulomb, next_H_N_out, accepts, cross_rejects = integrators.hmc_step(
             state, current_y, dt, potential_int, current_coulomb, current_H_N, beta
@@ -223,9 +232,9 @@ def analyse_trajectory(trajectory, num_steps, dt = None, track_snapshots = True,
 
         # Acceptance.
         if (track_accepts) and (step > 0):
-            if "accepts" in info:
+            if ("accepts" in info):
                 accepts.append(info["accepts"])
-            if "cross_rejects" in info:
+            if ("cross_rejects" in info):
                 cross_rejects.append(info["cross_rejects"])
 
     # End of trajectory loop, compile the dictionary and return.

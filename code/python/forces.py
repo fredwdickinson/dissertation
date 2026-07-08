@@ -160,3 +160,17 @@ def log_repulsion(x):
 
     else:
         raise ValueError(f"Input array to log repulsion wrong shape ({x.shape}).") 
+    
+@njit 
+def sum_hamiltonian(x, potential_int):
+    """
+    Calculates the sum of the Hamiltonian, as needed for Metropolis algorithms.
+    """
+
+    M = x.shape[0]; H_N = np.zeros(M)
+    for m in range(M):
+        V_init = evaluate_force(x[m], potential_int, 0)
+        log_rep = log_repulsion(x[m])
+        H_N[m] = 0.5*np.sum(V_init) - np.sum(log_rep)
+
+    return H_N
