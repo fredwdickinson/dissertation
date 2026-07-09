@@ -2,16 +2,17 @@ import numpy as np
 from numba import njit
 
 @njit
-def cg_jacobi(A, b, tol = 1e-6, max_iter = 50):
+def cg_jacobi(A, b, tol = 1e-9):
     """
     Conjugate gradient solve for Ax = b, applies Jacobi preconditioning.
-    Numba code: lots of for loops. 
+    Numba code: lots of for loops. Notation follows algorithm as in notes.
     """
-
-    total_iterations = 0;
 
     N = b.shape[0]; x = np.zeros(N)
     r = b.copy() # Since b - Ax = b - A0 = b.
+
+    total_iterations = 0
+    max_iter = N//2 # Can change but seems reasonable.
 
     M_inv = np.zeros(N)
     for i in range(N):
@@ -24,8 +25,8 @@ def cg_jacobi(A, b, tol = 1e-6, max_iter = 50):
     w = np.zeros(N)
     rz = np.dot(r, z)
 
-    for k in range(max_iter):
-        total_iterations += k
+    for _ in range(max_iter):
+        total_iterations += 1
 
         # Compute Ap
         for i in range(N):

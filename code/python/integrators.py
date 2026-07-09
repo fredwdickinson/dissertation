@@ -146,7 +146,7 @@ def imla_step(x, dt, potential_int, current_coulomb, current_H_N, beta, noise_sc
     """ 
 
     M, N = x.shape
-    total_accepts = 0; total_crossing_rejects = 0; # NOTE currently not implemented.
+    total_accepts = 0; total_crossing_rejects = 0; line_search_rejects = 0;
     newton_iterations = np.zeros(M); mean_cg_iterations = np.zeros(M);
 
     # Not to be confused with the midpoint Coulomb/Hessian.
@@ -160,11 +160,11 @@ def imla_step(x, dt, potential_int, current_coulomb, current_H_N, beta, noise_sc
 
     for m in range(M):
         cur_x = x[m]
-        y = np.copy(z[m])
+        y = np.copy(cur_x) # NOTE very important!
         trial_cg_iters = 0 # Per trial.
 
         for _ in range(max_newton_iter):
-            # NOTE Here check the total Newton iterations.
+            line_search_success = True; crossings = False; # Defaults in case solves in one step.
             newton_iterations[m] += 1
             coulomb_midpoint.fill(0.0); hess.fill(0.0);
 
@@ -195,7 +195,7 @@ def imla_step(x, dt, potential_int, current_coulomb, current_H_N, beta, noise_sc
             if (np.max(np.abs(nablaG)) < newton_tol):
                 break
 
-            step, cg_iters = cg_jacobi(hess, nablaG) # NOTE add cg_iters.
+            step, cg_iters = cg_jacobi(hess, nablaG)
             trial_cg_iters += cg_iters 
 
             # Backtracking in the midpoint method.
@@ -213,7 +213,7 @@ def imla_step(x, dt, potential_int, current_coulomb, current_H_N, beta, noise_sc
                 crossings = False
                 for i in range(N - 1):
                     if (y_try[i + 1] - y_try[i] < 0):
-                        crossings = True # Here tolerance instead of genuine crossing.
+                        crossings = True
 
                 if (not crossings):
                     # Need sufficient decrease condition: recalculate residual norm at suggested.
@@ -228,7 +228,7 @@ def imla_step(x, dt, potential_int, current_coulomb, current_H_N, beta, noise_sc
                         line_search_success = True 
                         break 
                         
-                    print(f"Was not sufficient decrease.")
+                    # Reaching here means no crossings but no sufficient decrease.
                 
                 # If crossings, or not sufficient decrease, half line search step.
                 alpha = alpha*0.5
@@ -236,45 +236,48 @@ def imla_step(x, dt, potential_int, current_coulomb, current_H_N, beta, noise_sc
             if (line_search_success):
                 y = y_try 
             else:
-                # No improvement to residual, so break early, will reject later.
+                # No improvement to residual, so break early. Rejected later.
                 break 
             
-            # End Newton iteration loop.
+            # End Newton iteration loop. Either succeed line search, or hit minimum alpha.
         
         # Average cg iterations per Newton iteration for this trial.
         mean_cg_iterations[m] = trial_cg_iters/newton_iterations[m]
 
-        if (not line_search_success):
-            # Abort this trial. Don't need to update.
+        # IMLA: calculate coulomb at next step and return.
+        coulomb_y = coulomb_interaction(y)
+
+        if (not metropolise):
+            # IMLA: always accept proposal. NOTE If using IMLA for burn in for MAIMLA then need to form next_H_N?
+            # Probably can do in simulate.py at the end of the burn-in.
+            next_x[m] = y; next_coulomb[m] = coulomb_y; next_H_N[m] = 23; # Doesn't use H_N.
+            total_accepts += 1
             continue
         
-        crossing = False 
-        for i in range(N - 1):
-            if (y[i] >= y[i + 1]):
-                crossing = True 
-                break 
+        # MAIMLA: check for line search failure/crossing failure.
+        if (not line_search_success):
+            # Abort this trial. Don't need to update.
+            line_search_rejects += 1
+            continue
 
-        if (crossing and metropolise):
-            # Do not reject if standard IMLA.
+        # Final check for crossings.
+        crossing = False
+        for i in range(N - 1):
+            if (y[i + 1] - y[i] <= 0):
+                crossing = True
+                break
+        
+        if (crossing):
             total_crossing_rejects += 1
             continue
 
+        # MAIMLA: proposal created, now accept/reject.
+        # Need to construct H_N AND grad H_N in terms of (cur_x, y_prop).
         v_y = evaluate_force(y, potential_int, 0)        
         log_repulsion_y = log_repulsion(y)
-        coulomb_y = coulomb_interaction(y)
-        
         sum_ham_y = np.sum(v_y)/2 - np.sum(log_repulsion_y)
         sum_ham_x = current_H_N[m] # Stored from last step.
 
-        if (not metropolise):
-            # IMLA: always accept proposal.
-            # NOTE This shouuld be moved above the calculations that are unnecessary: for IMLA just pass whatever?
-            next_x[m] = y; next_coulomb[m] = coulomb_y; next_H_N[m] = sum_ham_y
-            total_accepts += 1; total_crossing_rejects += int(crossing)
-            continue
-        
-        # MAIMLA: proposal created, now accept/reject.
-        # Need to construct H_N AND grad H_N in terms of (cur_x, y_prop).
         u = (cur_x + y)/2
         v_prime_u = evaluate_force(u, potential_int, 1)
         coulomb_u = coulomb_interaction(u)
@@ -288,7 +291,7 @@ def imla_step(x, dt, potential_int, current_coulomb, current_H_N, beta, noise_sc
             next_x[m] = y; next_coulomb[m] = coulomb_y; next_H_N[m] = sum_ham_y
             total_accepts += 1
 
-    return next_x, next_coulomb, next_H_N, total_accepts/M, total_crossing_rejects/M, newton_iterations, mean_cg_iterations
+    return next_x, next_coulomb, next_H_N, total_accepts/M, total_crossing_rejects/M, line_search_rejects/M, newton_iterations, mean_cg_iterations
 
 
 @njit

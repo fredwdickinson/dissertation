@@ -73,12 +73,13 @@ def make_imla_pipeline(N, dt, potential_type, beta, metropolise = False, newton_
         if (current_H_N is None):
             current_H_N = forces.sum_hamiltonian(state, potential_int)
 
-        next_x, next_coulomb, next_H_N, accepts, crossing_rejects, newton_iters, mean_cg_iters  = integrators.imla_step(
+        next_x, next_coulomb, next_H_N, accepts, crossing_rejects, line_search_rejects, newton_iters, mean_cg_iters  = integrators.imla_step(
             state, dt, potential_int, current_coulomb, current_H_N, beta, noise_scale, metropolise, newton_tol
         )
 
         current_coulomb = next_coulomb; current_H_N = next_H_N;
-        return next_x, {"accepts": accepts, "cross_rejects": crossing_rejects, "newton_iters": newton_iters, "mean_cg_iters": mean_cg_iters}
+        return next_x, {"accepts": accepts, "cross_rejects": crossing_rejects, "line_search_rejects": line_search_rejects,
+                        "newton_iters": newton_iters, "mean_cg_iters": mean_cg_iters}
         
     return pipeline
 
@@ -161,7 +162,7 @@ def simulate_dbm(init, steps, step_pipeline):
 def analyse_trajectory(trajectory, num_steps, dt = None, track_snapshots = True, burn_in = None, snapshot_interval = 10,
                        track_accepts = False, track_crossings = False, step_star = None,
                        track_distance = False, grid = None, F_exact = None, distance_interval = None, distance_type = "wasserstein",
-                       track_newton_iters = False):
+                       track_newton_info = False):
     """ 
     Master observe function (combined all previous here). By default only track_snapshots is True.
         Snapshots: burn_in, defaults to 1/2 the num_steps.
@@ -202,9 +203,10 @@ def analyse_trajectory(trajectory, num_steps, dt = None, track_snapshots = True,
         prev_ordering = None
         crossings_per_trial = None
 
-    if track_newton_iters:
+    if track_newton_info:
         newton_iters = []
         mean_cg_iters = []
+        line_search_rejects = []
         
     # Single pass through the generator.
     # Info is a dictionary: check keys. 
@@ -243,11 +245,13 @@ def analyse_trajectory(trajectory, num_steps, dt = None, track_snapshots = True,
                 cross_rejects.append(info["cross_rejects"])
 
         # Newton iterations.
-        if (track_newton_iters):
+        if (track_newton_info):
             if ("newton_iters" in info):
                 newton_iters.append(info["newton_iters"])
             if ("mean_cg_iters" in info): 
                 mean_cg_iters.append(info["mean_cg_iters"])
+            if ("line_search_rejects" in info):
+                line_search_rejects.append(info["line_search_rejects"])
 
     # End of trajectory loop, compile the dictionary and return.
     if track_snapshots:
@@ -268,9 +272,10 @@ def analyse_trajectory(trajectory, num_steps, dt = None, track_snapshots = True,
         
         results["crossings"] = crossings_per_trial
     
-    if track_newton_iters:
+    if track_newton_info:
         results["newton_iters"] = np.array(newton_iters)
         results["mean_cg_iters"] = np.array(mean_cg_iters)
+        results["line_search_rejects"] = np.array(line_search_rejects)
 
     return results
 

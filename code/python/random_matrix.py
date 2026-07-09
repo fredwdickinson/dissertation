@@ -4,12 +4,12 @@ import numpy as np
 No need for any Numba here.
 """
 
-def init_random_eigenvalues(M, N):
+def init_random_eigenvalues(M, N, beta, dt):
     """
     Generates M independent trials of random eigenvalues.
     """
 
-    return np.random.normal(0, 1, (M, N))
+    return np.sort(np.random.normal(0, 2.0*dt/(beta*N), (M, N)))
 
 def init_gue_eigenvalues(M, N):
     """ 
