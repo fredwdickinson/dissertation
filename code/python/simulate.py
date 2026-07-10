@@ -314,7 +314,7 @@ def target_dt(method, init, total_steps, potential_name, beta, dt_init, target):
         # On first step initialise.
         if (step_idx == 0):
             current_coulomb = forces.coulomb_interaction(x)
-            current_H_N = forces.sum_hamiltonian(x)
+            current_H_N = forces.sum_hamiltonian(x, potential_int)
 
             if (method == "hmc"):
                 y = np.random.normal(0, 1, x.shape)
