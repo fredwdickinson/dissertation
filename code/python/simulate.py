@@ -292,6 +292,7 @@ def target_dt(method, init, burn_steps, total_steps, potential_name, beta, dt_in
     x = np.copy(init); dt = dt_init 
     potential_int = potential_ints[potential_name]
 
+    noise_scale = np.sqrt(2*dt/(beta*N))
     current_coulomb = forces.coulomb_interaction(x)
     current_H_N = forces.sum_hamiltonian(x, potential_int)
     if (method == "hmc"):
