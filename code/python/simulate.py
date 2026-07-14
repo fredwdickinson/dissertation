@@ -279,12 +279,11 @@ def analyse_trajectory(trajectory, num_steps, dt = None, track_snapshots = True,
 
     return results
 
-
 # ==========================================================================================================
 # ==========================================================================================================
 # ==========================================================================================================
 
-def target_dt(method, init, total_steps, potential_name, beta, dt_init, target):
+def target_dt(method, init, burn_steps, total_steps, potential_name, beta, dt_init, target, newton_tol = 1e-5):
     """ 
     Accept MALA, HMC, MAIMLA.
     """
@@ -292,38 +291,42 @@ def target_dt(method, init, total_steps, potential_name, beta, dt_init, target):
     M, N = init.shape
     x = np.copy(init); dt = dt_init 
     potential_int = potential_ints[potential_name]
+
+    current_coulomb = forces.coulomb_interaction(x)
+    current_H_N = forces.sum_hamiltonian(x, potential_int)
+    if (method == "hmc"):
+        current_y = np.random.normal(0, 1, x.shape)
+
+    # Run the burn in.
+    for _ in range(burn_steps):
+        if (method == "hmc"):
+            next_x, next_y, next_coulomb, next_H_N, accepts, _ = integrators.hmc_step(
+                x, current_y, dt, potential_int, current_coulomb, current_H_N, beta)
+            current_y = next_y 
+        
+        elif (method == "mala"):
+            next_x, next_coulomb, next_H_N, accepts, _ = integrators.mala_step(
+                x, dt, potential_int, current_coulomb, current_H_N, beta, noise_scale)       
+
+        elif (method == "maimla"):
+            next_x, next_coulomb, next_H_N, accepts, _, _, _, _  = integrators.imla_step(
+                x, dt, potential_int, current_coulomb, current_H_N, beta, noise_scale, metropolise = True, newton_tol = newton_tol)
+
+        x = next_x; current_coulomb = next_coulomb; current_H_N = next_H_N; 
+
+    # Post burn in: update according to log(dt_next) = log(dt) + log(1 - (accept - target)/(iter+1)^kappa),
+    # translates to standard dt_next = dt + dt(accept-target)/(iter+1)^kappa.
+    kappa = 0.7
     accept_history = np.zeros(total_steps); dt_history = np.zeros(total_steps);
 
-    current_coulomb = None; current_H_N = None;
-    if (method == "hmc"):
-        current_y = None;
-
-    # Update according to log(dt_next) = log(dt) + log(1 - (accept - target)/(iter+1)^kappa).
-    # translates to standard dt_next = dt + dt(accept-target)/(iter+1)^kappa.
-    
-    kappa = 0.8; target_tol = 0.01
-    iters_within_tol = 0; needed_iters_within_tol = 20;
-
     for step_idx in range(total_steps):
-        if (iters_within_tol >= needed_iters_within_tol):
-            print(f"Breaking target dt early (method = {method}).")
-            break
+        noise_scale = np.sqrt(2*dt/(beta*N)) # Update every step because dt changes.
 
-        noise_scale = np.sqrt(2*dt/(beta*N)) # Updates every step because dt changes.
-
-        # On first step initialise.
-        if (step_idx == 0):
-            current_coulomb = forces.coulomb_interaction(x)
-            current_H_N = forces.sum_hamiltonian(x, potential_int)
-
-            if (method == "hmc"):
-                y = np.random.normal(0, 1, x.shape)
-            
         # Run the integrator for this dt.
         if (method == "hmc"):
             next_x, next_y, next_coulomb, next_H_N, accepts, _ = integrators.hmc_step(
-                x, y, dt, potential_int, current_coulomb, current_H_N, beta)
-            y = next_y 
+                x, current_y, dt, potential_int, current_coulomb, current_H_N, beta)
+            current_y = next_y 
         
         elif (method == "mala"):
             next_x, next_coulomb, next_H_N, accepts, _ = integrators.mala_step(
@@ -334,14 +337,8 @@ def target_dt(method, init, total_steps, potential_name, beta, dt_init, target):
                 x, dt, potential_int, current_coulomb, current_H_N, beta, noise_scale, metropolise = True, newton_tol = 1e-5)
 
         # Update dt and then all parameters.
-        if (step_idx >= 50):
-            dt_next = dt + dt*(accepts - target)/((step_idx)**kappa)
-            dt = dt_next
-
-        if (np.abs(accepts - target) < target_tol):
-            iters_within_tol += 1
-        else:
-            iters_within_tol = 0
+        dt_next = dt + dt*(accepts - target)/((step_idx + 1)**kappa)
+        dt = dt_next
 
         x = next_x; current_coulomb = next_coulomb; current_H_N = next_H_N; 
 
@@ -351,34 +348,3 @@ def target_dt(method, init, total_steps, potential_name, beta, dt_init, target):
 
     # End of range.
     return accept_history, dt_history
-
-def imla_target_dt(init, total_steps, potential_int, beta, dt_init, target):
-    """
-    Generator that yields dt and accept rate (no particles).
-    """
-
-    M, N = init.shape
-    x = np.copy(init)
-    dt = dt_init
-
-    # Will update according to log(dt_next) = log(dt) + gamma_n(accept - target)
-    # where gamma_n is the 1/(step+1)^kappa.
-    kappa = 0.5
-    smooth_avg_accept = target # For init only.
-    
-    for step_idx in range(total_steps):
-        noise_scale = np.sqrt(2*dt/(beta*N))
-        x, accept_rate = integrators.imla_step(
-            x, dt, potential_int, noise_scale, beta, metropolise = True)
-        
-        smooth_avg_accept = 0.75*smooth_avg_accept + 0.25*accept_rate
-        
-        if (step_idx > 30):
-            gamma_n = 0.1/((step_idx + 1)**kappa)
-            dt = dt*np.exp(gamma_n*(smooth_avg_accept - target))
-        
-        if (dt < 1e-8) or (dt > 0.75):
-            raise ValueError("Step size too big or small in target scheme (dt = {dt}).")
-
-        yield step_idx, dt, accept_rate
-

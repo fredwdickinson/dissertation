@@ -124,9 +124,9 @@ def mala_step(x, dt, potential_int, current_coulomb, current_H_N, beta, noise_sc
         sum_ham_y = np.sum(v_y)/2 - np.sum(log_repulsion_y)
         sum_ham_x = current_H_N[m] # Avoid recalculating for the log repulsion cost.
 
-        log_q_x_y = np.sum((current_x - y_prop + grad_H_current[m]*dt)**2) # backwards
-        log_q_y_x = np.sum((y_prop - current_x + drift_y*dt)**2) # forwards
-        log_alpha = -beta*N*(sum_ham_y - sum_ham_x) + 1/(2*noise_scale**2)*(log_q_x_y - log_q_y_x)
+        log_q_x_y = -1*np.sum((y_prop - (current_x + grad_H_current[m]*dt))**2) # forwards
+        log_q_y_x = -1*np.sum((current_x - (y_prop + drift_y*dt))**2) # backwards
+        log_alpha = -beta*N*(sum_ham_y - sum_ham_x) + 1/(2*noise_scale**2)*(log_q_y_x - log_q_x_y)
 
         # If accept, update, otherwise keep coulomb.
         if (np.log(np.random.random()) < log_alpha):
