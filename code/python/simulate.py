@@ -18,6 +18,10 @@ def get_pipeline(method, **kwargs):
         return make_implicit_pipeline(**kwargs)
     elif (method == "imla"):
         return make_imla_pipeline(**kwargs)
+    elif (method == "hmc"):
+        return make_hmc_pipeline(**kwargs)
+    elif (method == "mala"):
+        return make_mala_pipeline(**kwargs)
     else:
         raise ValueError(f"Do not know method {method}.")
     
