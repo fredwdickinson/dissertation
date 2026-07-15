@@ -74,11 +74,14 @@ def compute_exact_cdf(N, potential, grid, cdf_tol = 0.05):
     Construct true finite_N cdf F_N(x) from K_N (construct_kernel above).
     See (2.5) in Li and Menon.
     """
-
-    potential_func = get_force_func(potential_ints[potential], 0)
-    pis, c_sqrs = orthogonal_polys(N, potential_func, grid)
-    K_N = construct_kernel(N, potential_func, grid, pis, c_sqrs)
-    rho_N = np.diagonal(K_N) / N 
+    
+    if (N <= 30):
+        potential_func = get_force_func(potential_ints[potential], 0)
+        pis, c_sqrs = orthogonal_polys(N, potential_func, grid)
+        K_N = construct_kernel(N, potential_func, grid, pis, c_sqrs)
+        rho_N = np.diagonal(K_N)/N
+    else:
+        grid, rho_N = get_density(potential, grid)
 
     dx = grid[1] - grid[0]
     F_exact = np.cumsum(rho_N)*dx
@@ -146,13 +149,15 @@ def theoretical_density(s, q = 1.0, g = 1.0):
 
     return density
 
-def get_density(potential_type):
+def get_density(potential_type, s = None):
     # Returns the range and density for given potential types.
     if (potential_type == "quartic"):
-        s = np.linspace(-1.65, 1.65, 1000)
+        if (s is None):
+            s = np.linspace(-1.65, 1.65, 1000)
         density = theoretical_density(s, q = 0, g = 1)
     elif (potential_type == "quadratic"):
-        s = np.linspace(-2.125, 2.125, 1000)
+        if (s is None):
+            s = np.linspace(-2.125, 2.125, 1000)
         density = theoretical_density(s, q = 1, g = 0)
     else:
         raise NotImplementedError(f"Do not have potential {potential_type} in get_density().")

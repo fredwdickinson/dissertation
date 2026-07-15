@@ -15,6 +15,8 @@ def plot_hist(ax, particles, num_bins = 100, with_limit = True, potential_name =
         ax.plot(density_range, limiting_density, color = "red", lw = 1.5)
 
     ax.grid(False)
+    ax.set_yticks([0, 0.3])
+
     return ax
 
 def plot_accepts(ax, accepts):
@@ -27,4 +29,15 @@ def plot_accepts(ax, accepts):
     ax.axhline(np.mean(accepts), color = "orange", linestyle = "--", lw = 1.5, label = f"average {np.mean(accepts):.2f}")
     ax.legend(loc = "upper right")
 
+    return ax
+
+def plot_distances(ax, info):
+    """
+    Distance plotter.
+    """
+
+    if ("distance_times" not in info) or ("distances" not in info):
+        raise ValueError("Info passed does not contain distance information.")
+
+    ax.plot(info["distance_times"], np.log10(info["distances"]), lw = 1.5)
     return ax

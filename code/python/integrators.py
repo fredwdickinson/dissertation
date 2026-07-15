@@ -15,8 +15,8 @@ def euler_step(x, coulomb, v_prime, dt, noise_scale):
 @njit
 def tamed_euler_step(x, coulomb, v_prime, dt, noise_scale):
     # Tamed Euler step as by Li and Menon.
-    raw_confinement = 1/2*v_prime 
-    tamed_confinement = raw_confinement/(1.0 + dt*np.abs(raw_confinement))
+    raw_confinement = v_prime 
+    tamed_confinement = raw_confinement/(2.0 + dt*np.abs(raw_confinement))
 
     drift = coulomb - tamed_confinement    
     noise = np.random.normal(0, 1, x.shape)

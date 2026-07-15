@@ -1,8 +1,5 @@
 import numpy as np
-
-""" 
-No need for any Numba here.
-"""
+import python.densities as densities
 
 def init_random_eigenvalues(M, N, beta, dt):
     """
@@ -24,6 +21,11 @@ def init_gue_eigenvalues(M, N):
         eigenvalues[m, :] = np.linalg.eigvalsh(mat)
 
     return eigenvalues
+
+def init_quartic_eigenvalues(M, N):
+    grid, rho = densities.get_density("quartic")
+    cdf = 2
+    # NOTE to complete later.
 
 def construct_unitary(N):
     """ 

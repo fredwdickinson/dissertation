@@ -10,6 +10,9 @@ potential_ints = {
 }
 
 def get_pipeline(method, **kwargs):
+    """
+    Give method, kwargs N, dt, potential_type, beta.
+    """
     if (method == "euler"):
         return make_euler_pipeline(**kwargs)
     elif (method == "tamed"):
