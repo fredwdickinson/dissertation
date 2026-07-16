@@ -37,13 +37,18 @@ def implicit_newton_step(x, dt, potential_int, noise_scale):
     next_x = np.zeros_like(x)
     z = np.zeros_like(x) # NOTE pre-compute all starting? 
 
+    newton_iterations = np.zeros(M); mean_cg_iterations = np.zeros(M);
+
     # Newton solver tolerance.
     max_iter, tol = 20, 1e-6 # Hard coded, can change tol to be smaller if needed.
     for m in range(M):
         z[m] = x[m] + noise_scale*np.random.normal(0.0, 1.0, N)
         current_x = np.copy(z[m])
+        trial_cg_iters = 0
 
         for _ in range(max_iter):
+            newton_iterations[m] += 1
+
             # Clear existing arrays, recompute Hessian and Coulomb.
             coulomb.fill(0.0); hess.fill(0.0);
             v_prime = evaluate_force(current_x, potential_int, 1)
@@ -73,13 +78,15 @@ def implicit_newton_step(x, dt, potential_int, noise_scale):
             if (np.max(np.abs(nablaG)) < tol):
                 break
             
-            y = cg_jacobi(hess, nablaG) # CG solver for inverse Hessian.
+            y, cg_iters = cg_jacobi(hess, nablaG) # CG solver for inverse Hessian.
             current_x = current_x - y
+            trial_cg_iters += cg_iters
         
         # End of Newton iteration,
         next_x[m] = current_x
+        mean_cg_iterations[m] = trial_cg_iters/newton_iterations[m]
         
-    return next_x
+    return next_x, newton_iterations, mean_cg_iterations
 
 @njit
 def mala_step(x, dt, potential_int, current_coulomb, current_H_N, beta, noise_scale):

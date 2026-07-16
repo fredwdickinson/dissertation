@@ -31,13 +31,16 @@ def plot_accepts(ax, accepts):
 
     return ax
 
-def plot_distances(ax, info):
+def plot_distances(ax, info, label = None):
     """
     Distance plotter.
     """
 
     if ("distance_times" not in info) or ("distances" not in info):
         raise ValueError("Info passed does not contain distance information.")
-
-    ax.plot(info["distance_times"], np.log10(info["distances"]), lw = 1.5)
+    
+    if (label):
+        ax.plot(info["distance_times"], np.log10(info["distances"]), lw = 1.5, label = label)
+    else:
+        ax.plot(info["distance_times"], np.log10(info["distances"]), lw = 1.5)
     return ax

@@ -62,8 +62,8 @@ def make_implicit_pipeline(N, dt, potential_type, beta):
     potential_int = potential_ints[potential_type]
 
     def pipeline(state):
-        next_x = integrators.implicit_newton_step(state, dt, potential_int, noise_scale)
-        return next_x, {}
+        next_x, newton_iters, mean_cg_iters = integrators.implicit_newton_step(state, dt, potential_int, noise_scale)
+        return next_x, {"newton_iters": newton_iters, "mean_cg_iters": mean_cg_iters}
     
     return pipeline
 
