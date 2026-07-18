@@ -1,5 +1,9 @@
 import numpy as np
 import python.densities as densities
+import python.integrators as integrators
+
+# ========================================================================================
+# Initialisations (random, gue, quartic).
 
 def init_random_eigenvalues(M, N, beta, dt):
     """
@@ -22,17 +26,31 @@ def init_gue_eigenvalues(M, N):
 
     return eigenvalues
 
-def init_quartic_eigenvalues(M, N):
-    grid, rho = densities.get_density("quartic")
-    cdf = 2
-    # NOTE to complete later.
+def init_quartic_eigenvalues(M, N, dt = 0.1):
+    """
+    Run the implicit sampler for T = 1 with small dt.
+    """
+
+    # Assume beta=2.
+    noise_scale = np.sqrt(2.0*dt/(2.0*N))
+    T = 1; num_steps = int(T/dt);
+    x = init_gue_eigenvalues(M, N)
+
+    for _ in range(num_steps):
+        next_x, _, _ = integrators.implicit_newton_step(x, dt, potential_int = 2, noise_scale = noise_scale)
+        x = next_x 
+        
+    return x
+
+# ========================================================================================
+# Reconstructing matrices from the eigenvalues.
 
 def construct_unitary(N):
     """ 
     See Mezzadri (2006) for explanation of the QR decomposition.
-    Constructs a unitary random matrix.
+    Constructs a random unitary matrix.
     """
-    z = (np.random.randn(N, N) + 1j*np.random.randn(N, N)) / np.sqrt(2.0)
+    z = (np.random.randn(N, N) + 1j*np.random.randn(N, N))/np.sqrt(2.0)
     q, r = np.linalg.qr(z)
 
     d = np.diagonal(r)
