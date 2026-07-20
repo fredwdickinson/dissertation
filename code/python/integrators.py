@@ -87,6 +87,61 @@ def imla_newton_step(x, dt, potential_int, noise_scale,
 
     return next_x, z_mid, newton_iters, mean_cg_iters
 
+@njit
+def maimla_newton_step(prev_x, dt, potential_int, noise_scale, beta,
+                       max_newton_iters = 50, newton_tol = 1e-6, cg_tol = 1e-9):
+    """
+    MAIMLA step.
+    """
+
+    M, N = prev_x.shape
+    next_x = np.copy(prev_x)
+
+    total_accepts = 0 # Will be a probability (divide by M).
+    total_crossing_rejects = 0 
+
+    # IMLA proposal.
+    proposed_x, z_mid, newton_iters, mean_cg_iters = imla_newton_step(
+        prev_x, dt, potential_int, noise_scale, max_newton_iters, newton_tol, cg_tol)
+
+    for m in range(M):
+        x = prev_x[m]; y = proposed_x[m]
+        u = z_mid[m] #
+
+        # Check for crossings, reject if true.
+        crossing = False 
+        for j in range(N - 1):
+            if (y[j] >= y[j + 1]):
+                crossing = True 
+                break 
+        
+        if (crossing):
+            total_crossing_rejects += 1
+            continue 
+        
+        # Metropolis logic. No crossing, so find V: x, y; log rep: x, y; V': u; Coulomb: u.
+        v_x = evaluate_force(x, potential_int, 0); v_y = evaluate_force(y, potential_int, 0)
+        v_prime_u = evaluate_force(u, potential_int, 1)
+        log_rep_x = log_repulsion(x); log_rep_y = log_repulsion(y)
+        coulomb_u = coulomb_interaction(u)
+        grad_H_u = 0.5*v_prime_u - coulomb_u 
+
+        sum_H_x = np.sum(v_x)/2.0 - np.sum(log_rep_x) # Log repulsion already divides by N.
+        sum_H_y = np.sum(v_y)/2.0 - np.sum(log_rep_y)
+        log_pi_ratio = -beta*N*(sum_H_y - sum_H_x)
+
+        # See notes for how it cancels as below.
+        # log_q_y_x = np.sum((x - y + dt*beta*N*grad_H_u)**2)
+        # log_q_x_y = np.sum((y - x + dt*beta*N*grad_H_u)**2)
+        # log_q_ratio = -1/(4*dt)*(log_q_y_x - log_q_x_y)
+        log_q_ratio = -beta*N*np.sum((x - y)*grad_H_u)
+
+        log_alpha = log_pi_ratio + log_q_ratio 
+        if (np.log(np.random.random()) < log_alpha):
+            next_x[m] = y 
+            total_accepts += 1
+    
+    return next_x, total_accepts/M, total_crossing_rejects/M, newton_iters, mean_cg_iters
 
 @njit
 def mala_step(x, dt, potential_int, current_coulomb, current_H_N, beta, noise_scale):

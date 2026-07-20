@@ -67,29 +67,27 @@ def make_implicit_pipeline(N, dt, potential_type, beta):
     
     return pipeline
 
-def make_imla_pipeline(N, dt, potential_type, beta, metropolise = False, newton_tol = 1e-5):
+def make_imla_pipeline(N, dt, potential_type, beta, newton_tol = 1e-6):
     noise_scale = np.sqrt(2.0*dt/(beta*N))
-    current_coulomb = None; current_H_N = None;
     potential_int = potential_ints[potential_type]
     
     def pipeline(state):        
-        nonlocal current_coulomb, current_H_N
-        # Initialisation (only on first time step).
-        if (current_coulomb is None):
-            current_coulomb = forces.coulomb_interaction(state)
-        if (current_H_N is None):
-            current_H_N = forces.sum_hamiltonian(state, potential_int)
-
-        next_x, next_coulomb, next_H_N, accepts, crossing_rejects, line_search_rejects, newton_iters, mean_cg_iters  = integrators.imla_step(
-            state, dt, potential_int, current_coulomb, current_H_N, beta, noise_scale, metropolise, newton_tol
-        )
-
-        current_coulomb = next_coulomb; current_H_N = next_H_N;
-        return next_x, {"accepts": accepts, "cross_rejects": crossing_rejects, "line_search_rejects": line_search_rejects,
-                        "newton_iters": newton_iters, "mean_cg_iters": mean_cg_iters}
+        next_x, _, newton_iters, mean_cg_iters  = integrators.imla_newton_step(state, dt, potential_int, noise_scale, newton_tol)
+        return next_x, {"newton_iters": newton_iters, "mean_cg_iters": mean_cg_iters}
         
     return pipeline
 
+def make_maimla_pipeline(N, dt, potential_type, beta, newton_tol = 1e-6):
+    noise_scale = np.sqrt(2.0*dt/(beta*N))
+    potential_int = potential_ints[potential_type]
+
+    def pipeline(state):
+        next_x, accepts, crossing_rejects, newton_iters, mean_cg_iters = integrators.maimla_newton_step(
+            state, dt, potential_int, noise_scale, beta, newton_tol = newton_tol)   
+        return next_x, {"accepts": accepts, "cross_rejects": crossing_rejects, 
+                        "newton_iters": newton_iters, "mean_cg_iters": mean_cg_iters}
+
+    return pipeline 
 
 def make_mala_pipeline(N, dt, potential_type, beta):
     """
