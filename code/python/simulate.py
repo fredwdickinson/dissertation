@@ -83,7 +83,7 @@ def make_maimla_pipeline(N, dt, potential_type, beta, newton_tol = 1e-6):
 
     def pipeline(state):
         next_x, accepts, crossing_rejects, newton_iters, mean_cg_iters = integrators.maimla_newton_step(
-            state, dt, potential_int, noise_scale, beta, newton_tol = newton_tol)   
+            state, dt, potential_int, beta, noise_scale, newton_tol = newton_tol)   
         return next_x, {"accepts": accepts, "cross_rejects": crossing_rejects, 
                         "newton_iters": newton_iters, "mean_cg_iters": mean_cg_iters}
 
@@ -288,7 +288,7 @@ def analyse_trajectory(trajectory, num_steps, dt = None, track_snapshots = True,
 # ==========================================================================================================
 # ==========================================================================================================
 
-def target_dt(method, init, burn_steps, total_steps, potential_name, beta, dt_init, target, newton_tol = 1e-5):
+def target_dt(method, init, burn_steps, total_steps, potential_name, beta, dt_init, target, newton_tol = 1e-6):
     """ 
     Accept MALA, HMC, MAIMLA.
     """
@@ -315,10 +315,10 @@ def target_dt(method, init, burn_steps, total_steps, potential_name, beta, dt_in
                 x, dt, potential_int, current_coulomb, current_H_N, beta, noise_scale)       
 
         elif (method == "maimla"):
-            next_x, next_coulomb, next_H_N, accepts, _, _, _, _  = integrators.imla_step(
-                x, dt, potential_int, current_coulomb, current_H_N, beta, noise_scale, metropolise = True, newton_tol = newton_tol)
+            next_x, accepts, crossing_rejects, newton_iters, mean_cg_iters = integrators.maimla_newton_step(
+                x, dt, potential_int, beta, noise_scale, newton_tol = newton_tol)
 
-        x = next_x; current_coulomb = next_coulomb; current_H_N = next_H_N; 
+        x = next_x;
 
     # Post burn in: update according to log(dt_next) = log(dt) + log(1 - (accept - target)/(iter+1)^kappa),
     # translates to standard dt_next = dt + dt(accept-target)/(iter+1)^kappa.
@@ -339,14 +339,16 @@ def target_dt(method, init, burn_steps, total_steps, potential_name, beta, dt_in
                 x, dt, potential_int, current_coulomb, current_H_N, beta, noise_scale)       
 
         elif (method == "maimla"):
-            next_x, next_coulomb, next_H_N, accepts, _, _, _, _  = integrators.imla_step(
-                x, dt, potential_int, current_coulomb, current_H_N, beta, noise_scale, metropolise = True, newton_tol = 1e-5)
+            next_x, accepts, _, _, _  = integrators.maimla_newton_step(
+                x, dt, potential_int, beta, noise_scale, newton_tol = newton_tol)
 
         # Update dt and then all parameters.
         dt_next = dt + dt*(accepts - target)/((step_idx + 1)**kappa)
         dt = dt_next
 
-        x = next_x; current_coulomb = next_coulomb; current_H_N = next_H_N; 
+        x = next_x
+        if (method != "maimla"):
+            current_coulomb = next_coulomb; current_H_N = next_H_N; 
 
         # Save history.
         accept_history[step_idx] = accepts

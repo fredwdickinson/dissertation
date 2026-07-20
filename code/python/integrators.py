@@ -88,7 +88,7 @@ def imla_newton_step(x, dt, potential_int, noise_scale,
     return next_x, z_mid, newton_iters, mean_cg_iters
 
 @njit
-def maimla_newton_step(prev_x, dt, potential_int, noise_scale, beta,
+def maimla_newton_step(prev_x, dt, potential_int, beta, noise_scale,
                        max_newton_iters = 50, newton_tol = 1e-6, cg_tol = 1e-9):
     """
     MAIMLA step.
