@@ -166,29 +166,28 @@ def simulate_dbm(init, steps, step_pipeline):
 
 def analyse_trajectory(trajectory, num_steps, dt = None, track_snapshots = True, burn_in = None, snapshot_interval = 10,
                        track_accepts = False, track_crossings = False, step_star = None,
-                       track_distance = False, grid = None, F_exact = None, distance_interval = None, distance_type = "wasserstein",
-                       track_newton_info = False):
+                       track_distance = False, grid = None, F_exact = None, distance_interval = 10, distance_type = "wasserstein",
+                       track_newton_info = False,
+                       track_spacings = False, F_cdf = None):
     """ 
     Master observe function (combined all previous here). By default only track_snapshots is True.
         Snapshots: burn_in, defaults to 1/2 the num_steps.
         Accepts: track_accepts, NOTE right now only MALA returns cross rejects.
         Crossings: track_crossings, step_star.
         Distances: track_distance, grid (that the true cdf is evaluated on), dt, F_exact.
+        Spacings: track_spacings, F_cdf (function)
     """
 
     # Defaults. 
     if burn_in is None:
-        burn_in = num_steps//2
-        # Default snapshot interval is 10.
+        burn_in = num_steps//10 # Assumed initialised near equilibrium.
 
-    if distance_interval is None:
-        distance_interval = max(1, num_steps//240)
-        # Don't compute distances at every point.
-
-    # 
     results = {}
     if track_snapshots:
         snapshots = []
+    
+    if track_spacings:
+        spacings = []
 
     if track_accepts:
         accepts = []
@@ -258,9 +257,25 @@ def analyse_trajectory(trajectory, num_steps, dt = None, track_snapshots = True,
             if ("line_search_rejects" in info):
                 line_search_rejects.append(info["line_search_rejects"])
 
+        # Mean spacings.
+        if (track_spacings):
+            M, N = state.shape # Just reads metadata so no bother about speed.
+            low = int(N/5); high = int(4*N/5);
+            middle = state[:, low:high]
+
+            xis = N*F_cdf(middle)
+            gaps = np.diff(xis, axis = 1)
+            if (np.abs(1 - gaps.mean()) > 0.05):
+                raise ValueError("Mean spacings after transform is not 1.")
+            
+            spacings.append(gaps)
+
     # End of trajectory loop, compile the dictionary and return.
     if track_snapshots:
         results["snapshots"] = np.concatenate(snapshots).flatten()
+
+    if (track_spacings):
+        results["spacings"] = np.concatenate(spacings).flatten()
     
     if track_accepts:
         results["accepts"] = np.array(accepts)

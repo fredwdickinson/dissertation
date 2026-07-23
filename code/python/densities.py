@@ -199,3 +199,15 @@ def compute_distance(P, Q, grid, distance_type = "ks", p = 1):
 # NOTE Needs a clean up but for now use exact semicircle pdf.
 def exact_semicircle_cdf(x, R = 2):
     return 1/2 + (x*np.sqrt(R**2 - x**2))/(np.pi*R**2) + np.arcsin(x/R)/np.pi
+
+def wigner_surmise(s, beta):
+    # See above markdown.
+    match beta:
+        case 1:
+            a = np.pi/2; b = np.pi/4;
+        case 2:
+            a = 32/(np.pi**2); b = 4/np.pi;
+        case 4:
+            a = 262144/(729*np.pi**3); b = 64/(9*np.pi);
+
+    return a*(s**beta)*np.exp(-b*s**2)

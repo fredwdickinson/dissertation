@@ -1,5 +1,5 @@
 
-from python.densities import get_density
+from python.densities import get_density, wigner_surmise
 import numpy as np
 import matplotlib.pyplot as plt
 plt.style.use('dissertation.mplstyle')
@@ -8,7 +8,9 @@ def plot_hist(ax, particles, num_bins = 100, with_limit = True, potential_name =
     """
     Histogram plotter.
     """
-    ax.hist(particles, bins = num_bins, density = True, color = "steelblue", edgecolor = "black", alpha = 0.75)
+
+    edgecolour = "black" if num_bins <= 100 else None
+    ax.hist(particles, bins = num_bins, density = True, color = "steelblue", edgecolor = edgecolour, alpha = 0.75)
 
     if (with_limit):
         density_range, limiting_density = get_density(potential_name)
@@ -44,3 +46,23 @@ def plot_distances(ax, info, label = None):
     else:
         ax.plot(info["distance_times"], np.log10(info["distances"]), lw = 1.5)
     return ax
+
+
+def plot_spacings(ax, spacings, beta, num_bins = 100, with_limt = True):
+    """
+    Spacings plotter.
+    """
+    edgecolour = "black" if num_bins <= 100 else None
+    ax.hist(spacings, bins = num_bins, density = True, color = "steelblue", edgecolor = edgecolour, alpha = 0.75)
+    
+    if (with_limt):
+        space = np.linspace(0, 3, 500)
+        surmise = wigner_surmise(space, beta)
+        ax.plot(space, surmise, color = "red", lw = 1.5, label = rf"$\beta =$ {beta}")
+
+    ax.grid(False)
+    ax.set_yticks([0, 0.5, 1])
+    ax.legend(fontsize = 14)
+
+    return ax
+

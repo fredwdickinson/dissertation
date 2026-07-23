@@ -26,14 +26,14 @@ def init_gue_eigenvalues(M, N):
 
     return eigenvalues
 
-def init_quartic_eigenvalues(M, N, dt = 0.1):
+def init_quartic_eigenvalues(M, N, T = 1.0, dt = 0.1):
     """
     Run the implicit sampler for T = 1 with small dt.
     """
 
     # Assume beta=2.
     noise_scale = np.sqrt(2.0*dt/(2.0*N))
-    T = 1; num_steps = int(T/dt);
+    num_steps = int(T/dt);
     x = init_gue_eigenvalues(M, N)
 
     for _ in range(num_steps):
