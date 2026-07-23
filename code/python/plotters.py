@@ -48,21 +48,21 @@ def plot_distances(ax, info, label = None):
     return ax
 
 
-def plot_spacings(ax, spacings, beta, num_bins = 100, with_limt = True):
+def plot_spacings(ax, spacings, beta, num_bins = 100, with_limit = True):
     """
     Spacings plotter.
     """
     edgecolour = "black" if num_bins <= 100 else None
     ax.hist(spacings, bins = num_bins, density = True, color = "steelblue", edgecolor = edgecolour, alpha = 0.75)
     
-    if (with_limt):
+    if (with_limit):
         space = np.linspace(0, 3, 500)
         surmise = wigner_surmise(space, beta)
         ax.plot(space, surmise, color = "red", lw = 1.5, label = rf"$\beta =$ {beta}")
+        # ax.legend(fontsize = 14)
 
     ax.grid(False)
     ax.set_yticks([0, 0.5, 1])
-    ax.legend(fontsize = 14)
 
     return ax
 
