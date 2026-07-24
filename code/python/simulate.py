@@ -67,6 +67,18 @@ def make_implicit_pipeline(N, dt, potential_type, beta):
     
     return pipeline
 
+def make_maila_pipeline(N, dt, potential_type, beta):
+    noise_scale = np.sqrt(2.0*dt/(beta*N))
+    potential_int = potential_ints[potential_type]
+
+    def pipeline(state):
+        next_x, accepts, newton_iters, mean_cg_iters = integrators.maila_newton_step(
+            state, dt, potential_int, beta, noise_scale)
+
+        return next_x, {"accepts": accepts, "newton_iters": newton_iters, "mean_cg_iters": mean_cg_iters}
+
+    return pipeline
+
 def make_imla_pipeline(N, dt, potential_type, beta, newton_tol = 1e-6):
     noise_scale = np.sqrt(2.0*dt/(beta*N))
     potential_int = potential_ints[potential_type]

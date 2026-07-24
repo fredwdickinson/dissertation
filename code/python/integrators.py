@@ -1,9 +1,10 @@
 import numpy as np
 from numba import njit
 
-from python.newton import solve_newton_single 
+from python.newton import solve_newton_single, cholesky_log_det
 from python.forces import evaluate_force
 from python.forces import coulomb_interaction, log_repulsion
+
 
 # ===========================================================================
 # Unadjusted methods (Euler, tamed, implicit, implicit midpoint).
@@ -55,6 +56,53 @@ def implicit_newton_step(x, dt, potential_int, noise_scale,
         newton_iters[m] = trial_newton_iters; mean_cg_iters[m] = trial_avg_cg_iters;
 
     return next_x, newton_iters, mean_cg_iters
+
+@njit
+def maila_newton_step(prev_x, dt, potential_int, beta, noise_scale,
+                         max_newton_iters = 50, newton_tol = 1e-6, cg_tol = 1e-9, det_method = "cholesky"):
+    """ 
+    Performs the implict step with Newton's method with a Metropolis-Hastings accept/reject scheme.
+    """
+
+    M, N = prev_x.shape
+    next_x = np.copy(prev_x)
+    total_accepts = 0 # Divide by M later for probability.
+
+    # Proposal.
+    # NOTE Modify implicit_newton_step so that it returns the Coulomb information?
+    proposed_x, newton_iters, mean_cg_iters = implicit_newton_step(
+                prev_x, dt, potential_int, noise_scale,
+                max_newton_iters = max_newton_iters, newton_tol = newton_tol, cg_tol = cg_tol)
+
+    # Now go through and accept/reject.
+    for m in range(M):
+        x = prev_x[m]; y = proposed_x[m]
+        v_x = evaluate_force(x, potential_int, 0); v_y = evaluate_force(y, potential_int, 0)
+        v_prime_x = evaluate_force(x, potential_int, 1); v_prime_y = evaluate_force(y, potential_int, 1)
+        v_double_prime_x = evaluate_force(x, potential_int, 2); v_double_prime_y = evaluate_force(y, potential_int, 2)
+        log_rep_x = log_repulsion(x); log_rep_y = log_repulsion(y)
+
+        sum_H_x = np.sum(v_x)/2.0 - np.sum(log_rep_x) # Log repulsion already divides by N.
+        sum_H_y = np.sum(v_y)/2.0 - np.sum(log_rep_y)
+        log_pi_ratio = -beta*N*(sum_H_y - sum_H_x)
+
+        grad_H_x = 1/2*v_prime_x - coulomb_interaction(x)
+        grad_H_y = 1/2*v_prime_y - coulomb_interaction(y)
+
+        gaussian_part_y_x = -1*np.sum((x - y + dt*grad_H_x)**2)/(2*noise_scale**2)
+        gaussian_part_x_y = -1*np.sum((y - x + dt*grad_H_y)**2)/(2*noise_scale**2)
+
+        log_det_x = cholesky_log_det(x, beta, dt, v_double_prime_x)
+        log_det_y = cholesky_log_det(y, beta, dt, v_double_prime_y)
+        log_q_ratio = (log_det_x - log_det_y) + (gaussian_part_y_x - gaussian_part_x_y)
+
+        # Construct the acceptance ratio.
+        log_alpha = log_pi_ratio + log_q_ratio
+        if (np.log(np.random.random()) < log_alpha):
+            next_x[m] = y
+            total_accepts += 1 
+
+    return next_x, total_accepts/M, newton_iters, mean_cg_iters
 
 @njit
 def imla_newton_step(x, dt, potential_int, noise_scale,
@@ -131,9 +179,6 @@ def maimla_newton_step(prev_x, dt, potential_int, beta, noise_scale,
         log_pi_ratio = -beta*N*(sum_H_y - sum_H_x)
 
         # See notes for how it cancels as below.
-        # log_q_y_x = np.sum((x - y + dt*beta*N*grad_H_u)**2)
-        # log_q_x_y = np.sum((y - x + dt*beta*N*grad_H_u)**2)
-        # log_q_ratio = -1/(4*dt)*(log_q_y_x - log_q_x_y)
         log_q_ratio = -beta*N*np.sum((x - y)*grad_H_u)
 
         log_alpha = log_pi_ratio + log_q_ratio 

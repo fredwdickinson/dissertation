@@ -1,8 +1,7 @@
 import numpy as np
-from numba import njit
-
+from numba import njit, prange 
 from python import forces, solvers
-
+import scipy.linalg
 
 @njit
 def construct_hess_coulomb(current_x, dt, v_double_prime, hess, coulomb):
@@ -109,6 +108,44 @@ def solve_newton_single(x_m, z_m, dt, potential_int,
 # ========================================================================================
 # ========================================================================================
 # ========================================================================================
+
+@njit(parallel = True, fastmath = True)
+def build_metropolis_hessian(x, beta, dt, v_double_prime):
+    """
+    Builds the matrix Hessian I_n + dt*beta*N*nabla^2 H_N(x)).
+    """
+
+    N = x.shape[0]
+    A = np.zeros((N, N), dtype = float)
+
+    if (np.any(v_double_prime < 0.0)):
+            raise ValueError(f"V'' is not positive: {v_double_prime}")
+
+    # prange: Numba parallel looping.
+    for i in prange(N):
+        xi = x[i]; row_sum = 0.0; # Row sum will be -dt*beta/(diff^2).
+        diag_constant = 1.0 + 0.5*dt*beta*N*v_double_prime[i]
+
+        for j in range(N):
+            if (i == j):
+                continue # Ignore diagonals.
+
+            diff = xi - x[j]
+            term = (dt*beta)/(diff*diff)
+            A[i, j] = -term; row_sum += term 
+
+        # Diagonal elements.
+        A[i, i] = diag_constant + row_sum 
+
+    return A
+
+@njit
+def cholesky_log_det(x, beta, dt, v_double_prime):
+    A = build_metropolis_hessian(x, beta, dt, v_double_prime)
+
+    # For now with NumPy.
+    L = np.linalg.cholesky(A)
+    return 2.0*np.sum(np.log(np.diag(L)))
 
 
 

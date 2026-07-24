@@ -42,6 +42,8 @@ def evaluate_force(x, potential_int, deriv_int):
                     return grad_quadratic(x)
                 case 2:
                     return hess_quadratic(x)
+                case _:
+                    raise ValueError("Unsupported deriv_int.")
         case 2:
             match deriv_int:
                 case 0:
@@ -50,6 +52,8 @@ def evaluate_force(x, potential_int, deriv_int):
                     return grad_quartic(x)
                 case 2:
                     return hess_quartic(x)
+                case _:
+                    raise ValueError("Unsupported deriv_int.")
         case _:
             raise ValueError(f"Unsupported potential name {potential_int}.")
         
@@ -123,6 +127,7 @@ def coulomb_interaction(x):
                     coulomb[i] += 1.0 / (x[i] - x[j])
                     
         return coulomb/N
+    
     elif (x.ndim == 2):
         M, N = x.shape
         coulomb = np.zeros((M, N))

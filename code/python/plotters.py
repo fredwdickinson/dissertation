@@ -48,12 +48,12 @@ def plot_distances(ax, info, label = None):
     return ax
 
 
-def plot_spacings(ax, spacings, beta, num_bins = 100, with_limit = True):
+def plot_spacings(ax, spacings, beta, num_bins = 100, with_limit = True, hist_label = None):
     """
     Spacings plotter.
     """
     edgecolour = "black" if num_bins <= 100 else None
-    ax.hist(spacings, bins = num_bins, density = True, color = "steelblue", edgecolor = edgecolour, alpha = 0.75)
+    ax.hist(spacings, bins = num_bins, density = True, color = "steelblue", edgecolor = edgecolour, alpha = 0.75, label = hist_label)
     
     if (with_limit):
         space = np.linspace(0, 3, 500)
