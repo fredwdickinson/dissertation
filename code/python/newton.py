@@ -147,5 +147,11 @@ def cholesky_log_det(x, beta, dt, v_double_prime):
     L = np.linalg.cholesky(A)
     return 2.0*np.sum(np.log(np.diag(L)))
 
+@njit
+def eval_cholesky_log_det(A):
+    L = np.linalg.cholesky(A)
+    return 2.0*np.sum(np.log(np.diag(L)))
+
+
 
 
