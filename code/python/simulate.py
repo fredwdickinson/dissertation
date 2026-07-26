@@ -129,7 +129,7 @@ def make_mala_pipeline(N, dt, potential_type, beta):
 
     return pipeline
 
-def make_hmc_pipeline(N, dt, potential_type, beta):
+def make_hmc_pipeline(N, dt, potential_type, beta, L = 1, gamma_N = 1.0, alpha_N = 1.0):
     """ 
     Step pipeline for the hybrid Monte Carlo algorithm (Chafai and Ferre).
     For now alpha_n and gamma_n are taken as default (both 1).
@@ -151,7 +151,7 @@ def make_hmc_pipeline(N, dt, potential_type, beta):
             current_H_N = forces.sum_hamiltonian(state, potential_int)
 
         next_x, next_y, next_coulomb, next_H_N, accepts, cross_rejects = integrators.hmc_step(
-            state, current_y, dt, potential_int, current_coulomb, current_H_N, beta
+            state, current_y, dt, potential_int, current_coulomb, current_H_N, beta, L = L, gamma_N = gamma_N, alpha_N = alpha_N
         )
 
         current_y = next_y; current_coulomb = next_coulomb; current_H_N = next_H_N
