@@ -315,7 +315,8 @@ def analyse_trajectory(trajectory, num_steps, dt = None, track_snapshots = True,
 # ==========================================================================================================
 # ==========================================================================================================
 
-def target_dt(method, init, burn_steps, total_steps, potential_name, beta, dt_init, target, newton_tol = 1e-6):
+def target_dt(method, init, burn_steps, total_steps, potential_name, beta, dt_init, target, 
+              L = 1, kappa = 0.7, newton_tol = 1e-6):
     """ 
     Accept MALA, HMC, MAIMLA.
     """
@@ -334,7 +335,7 @@ def target_dt(method, init, burn_steps, total_steps, potential_name, beta, dt_in
     for _ in range(burn_steps):
         if (method == "hmc"):
             next_x, next_y, next_coulomb, next_H_N, accepts, _ = integrators.hmc_step(
-                x, current_y, dt, potential_int, current_coulomb, current_H_N, beta)
+                x, current_y, dt, potential_int, current_coulomb, current_H_N, beta, L = L)
             current_y = next_y 
         
         elif (method == "mala"):
@@ -349,7 +350,6 @@ def target_dt(method, init, burn_steps, total_steps, potential_name, beta, dt_in
 
     # Post burn in: update according to log(dt_next) = log(dt) + log(1 - (accept - target)/(iter+1)^kappa),
     # translates to standard dt_next = dt + dt(accept-target)/(iter+1)^kappa.
-    kappa = 0.7
     accept_history = np.zeros(total_steps); dt_history = np.zeros(total_steps);
 
     for step_idx in range(total_steps):
@@ -358,7 +358,7 @@ def target_dt(method, init, burn_steps, total_steps, potential_name, beta, dt_in
         # Run the integrator for this dt.
         if (method == "hmc"):
             next_x, next_y, next_coulomb, next_H_N, accepts, _ = integrators.hmc_step(
-                x, current_y, dt, potential_int, current_coulomb, current_H_N, beta)
+                x, current_y, dt, potential_int, current_coulomb, current_H_N, beta, L = L)
             current_y = next_y 
         
         elif (method == "mala"):
