@@ -325,3 +325,83 @@ def hmc_step(x, p, dt, potential_int, current_coulomb, current_H_N, beta, L = 1,
 
     # End of trial loop.
     return next_x, next_p, next_coulomb, next_H_N, total_accepts/M, total_cross_rejects/M
+
+
+# ========================================================
+# ========================================================
+# ========================================================
+# ========================================================
+# ========================================================
+# ========================================================
+# ========================================================
+# ========================================================
+# ========================================================
+# ========================================================
+
+
+@njit
+def mala_step_wishart(x, dt, potential_int, current_coulomb, current_H_N, beta, noise_scale, c):
+    """
+    Modified for the Wishart-Laguerre ensembles (takes c, rejects on particles<0).
+    """
+
+    M, N = x.shape
+    total_accepts = 0; total_crossing_rejects = 0; total_negativity_rejects = 0;
+    next_x = np.copy(x); next_coulomb = np.copy(current_coulomb); next_H_N = np.copy(current_H_N);
+
+    # Proposed step: Euler-Maruyama.
+    v_prime = evaluate_force(x, potential_int, 1, c)
+    grad_H_current = current_coulomb - 1/2*v_prime
+    noise = np.random.normal(0, 1, x.shape)
+    y_proposed = x + grad_H_current*dt + noise_scale*noise
+  
+    for m in range(M):
+        current_x = x[m]
+        y_prop = y_proposed[m]
+
+        any_negative = False
+        for i in range(N - 1):
+            if (y_prop[i] < 0):
+                any_negative = True 
+                break 
+
+        if (any_negative):
+            total_negativity_rejects += 1
+            next_x[m] = current_x
+            next_coulomb[m] = current_coulomb[m]
+            continue 
+
+        crossing = False 
+        for i in range(N - 1):
+            if (y_prop[i] >= y_prop[i + 1]):
+                crossing = True 
+                break 
+
+        if (crossing):
+            total_crossing_rejects += 1
+            next_x[m] = current_x 
+            next_coulomb[m] = current_coulomb[m]
+            continue
+
+        # No crossing, proceed with standard accept/reject logic.
+        v_y = evaluate_force(y_prop, potential_int, 0, c); v_prime_y = evaluate_force(y_prop, potential_int, 1, c)
+        coulomb_y = coulomb_interaction(y_prop)      
+        drift_y = coulomb_y - 1/2*v_prime_y # enough for grad H_N
+        
+        # Now construct proposed H_N and the forward/backward q(x, y).
+        log_repulsion_y = log_repulsion(y_prop)
+        sum_ham_y = np.sum(v_y)/2 - np.sum(log_repulsion_y)
+        sum_ham_x = current_H_N[m] # Avoid recalculating for the log repulsion cost.
+
+        log_q_x_y = -1*np.sum((y_prop - (current_x + grad_H_current[m]*dt))**2) # forwards
+        log_q_y_x = -1*np.sum((current_x - (y_prop + drift_y*dt))**2) # backwards
+        log_alpha = -beta*N*(sum_ham_y - sum_ham_x) + 1/(2*noise_scale**2)*(log_q_y_x - log_q_x_y)
+
+        # If accept, update, otherwise keep coulomb.
+        if (np.log(np.random.random()) < log_alpha):
+            next_x[m] = y_prop
+            next_coulomb[m] = coulomb_y
+            next_H_N[m] = sum_ham_y
+            total_accepts += 1
+
+    return next_x, next_coulomb, next_H_N, total_accepts/M, total_crossing_rejects/M, total_negativity_rejects/M

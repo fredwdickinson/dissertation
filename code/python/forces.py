@@ -27,13 +27,14 @@ def get_force_func(potential_int, deriv_int):
             raise ValueError(f"Unsupported potential integer {potential_int}.")
         
 @njit
-def evaluate_force(x, potential_int, deriv_int):
+def evaluate_force(x, potential_int, deriv_int, c = 1):
     """ 
     Evaluates the force for potential "name" and deriv e.g. None, grad, hess
     at the given input x.
     """
 
     match potential_int:
+        # Quadratic potential V(x) = x^2/2.
         case 0:
             match deriv_int:
                 case 0:
@@ -44,6 +45,8 @@ def evaluate_force(x, potential_int, deriv_int):
                     return hess_quadratic(x)
                 case _:
                     raise ValueError("Unsupported deriv_int.")
+
+        # Pure quartic V(x) = x^4/4.
         case 2:
             match deriv_int:
                 case 0:
@@ -52,6 +55,16 @@ def evaluate_force(x, potential_int, deriv_int):
                     return grad_quartic(x)
                 case 2:
                     return hess_quartic(x)
+                case _:
+                    raise ValueError("Unsupported deriv_int.")
+
+        # Wishart-Laguerre V(x) = x/c - (1/c - 1)ln(x).
+        case 3:
+            match deriv_int:
+                case 0:
+                    return potential_wishart(x, c)
+                case 1:
+                    return grad_wishart(x, c)
                 case _:
                     raise ValueError("Unsupported deriv_int.")
         case _:
@@ -103,6 +116,22 @@ def hess_quartic(x):
 @njit
 def hess_quad_quartic(x):
     return 1.0 + 3.0*(x**2)
+
+#
+# Different potentials for Wishart-Laguerre ensembles.
+#
+
+@njit
+def potential_wishart(x, c):
+    return x/c - (1/c - 1)*np.log(x)
+
+@njit
+def grad_wishart(x, c):
+    return 1/c - (1/c - 1)/x
+
+# Need Hess only if doing implicit 
+# - but landscape changes so check first.
+
 
 #
 # Coulomb interaction: for now do naive, later re-implement 
@@ -167,14 +196,14 @@ def log_repulsion(x):
         raise ValueError(f"Input array to log repulsion wrong shape ({x.shape}).") 
     
 @njit 
-def sum_hamiltonian(x, potential_int):
+def sum_hamiltonian(x, potential_int, c = 1):
     """
     Calculates the sum of the Hamiltonian, as needed for Metropolis algorithms.
     """
 
     M = x.shape[0]; H_N = np.zeros(M)
     for m in range(M):
-        V_init = evaluate_force(x[m], potential_int, 0)
+        V_init = evaluate_force(x[m], potential_int, 0, c)
         log_rep = log_repulsion(x[m])
         H_N[m] = 0.5*np.sum(V_init) - np.sum(log_rep)
 

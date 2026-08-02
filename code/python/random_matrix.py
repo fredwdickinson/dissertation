@@ -12,6 +12,22 @@ def init_random_eigenvalues(M, N, beta, dt):
 
     return np.sort(np.random.normal(0, 2.0*dt/(beta*N), (M, N)))
 
+def init_beta_eigenvalues(M, N, alpha, beta):
+    """
+    Generates M independent trials of eigenvalues from the beta distribution.
+    """
+    return np.sort(np.random.beta(alpha, beta, (M, N)))
+
+def init_wishart_eigenvalues(M, N, c):
+    """
+    Generatre uniformly on the bound [a, b] where a,b = (1-+sqrt(c))^2
+    """
+
+    a = (1 - np.sqrt(c))**2; b = (1 + np.sqrt(c))**2
+    init = np.linspace(a*1.05, b*0.95, N)
+
+    return np.tile(init, (M, 1))
+
 def init_gue_eigenvalues(M, N):
     """ 
     Generates M independent trials of GUE eigenvalues.

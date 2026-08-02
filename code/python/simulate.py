@@ -6,7 +6,8 @@ from python.densities import compute_empirical_cdf, compute_distance
 potential_ints = {
     "quadratic": 0,
     "quad-quartic": 1,
-    "quartic": 2
+    "quartic": 2,
+    "wishart-laguerre": 3
 }
 
 def get_pipeline(method, **kwargs):
@@ -204,6 +205,7 @@ def analyse_trajectory(trajectory, num_steps, dt = None, track_snapshots = True,
     if track_accepts:
         accepts = []
         cross_rejects = []
+        negativity_rejects = []
 
     if track_distance:
         if (grid is None) or (F_exact is None) or (dt is None):
@@ -259,6 +261,8 @@ def analyse_trajectory(trajectory, num_steps, dt = None, track_snapshots = True,
                 accepts.append(info["accepts"])
             if ("cross_rejects" in info):
                 cross_rejects.append(info["cross_rejects"])
+            if ("negativity_rejects" in info):
+                negativity_rejects.append(info["negativity_rejects"])
 
         # Newton iterations.
         if (track_newton_info):
@@ -293,6 +297,8 @@ def analyse_trajectory(trajectory, num_steps, dt = None, track_snapshots = True,
         results["accepts"] = np.array(accepts)
         if cross_rejects:
             results["cross_rejects"] = np.array(cross_rejects)
+        if negativity_rejects:
+            results["negativity_rejects"] = np.array(negativity_rejects)
             
     if track_distance:
         results["distance_times"] = np.array(history_times)
@@ -383,3 +389,47 @@ def target_dt(method, init, burn_steps, total_steps, potential_name, beta, dt_in
 
     # End of range.
     return accept_history, dt_history
+
+# ========================================================
+# ========================================================
+# ========================================================
+# ========================================================
+# ========================================================
+# ========================================================
+# ========================================================
+# ========================================================
+# ========================================================
+# ========================================================
+
+
+def make_mala_pipeline_wishart(N, dt, potential_type, beta, c = 1/2):
+    """
+    Temp modification to MALA pipe for the Wishart-Laguerre ensembles,
+    needs c >0  passing in and needs an explicit positivty constraint on the
+    particles because of the logarithm in the potential.
+    """
+    
+    current_coulomb = None; current_H_N = None;
+    potential_int = potential_ints[potential_type]
+    if (potential_int != 3):
+        raise ValueError("Don't call Wishart modification with wrong potential (use <wishart-laguerre>).")
+
+    noise_scale = np.sqrt(2.0*dt/(beta*N))
+
+    def pipeline(state):
+        nonlocal current_coulomb, current_H_N
+        
+        # Only calculate on first step.
+        if (current_coulomb is None):
+            current_coulomb = forces.coulomb_interaction(state)
+        if (current_H_N is None):
+            current_H_N = forces.sum_hamiltonian(state, potential_int, c)
+
+        next_x, next_coulomb, next_H_N, accepts, crossing_rejects, negativity_rejects = integrators.mala_step_wishart(
+            state, dt, potential_int, current_coulomb, current_H_N, beta, noise_scale, c
+        )
+
+        current_coulomb = next_coulomb; current_H_N = next_H_N;
+        return next_x, {"accepts": accepts, "cross_rejects": crossing_rejects, "negativity_rejects": negativity_rejects}
+
+    return pipeline

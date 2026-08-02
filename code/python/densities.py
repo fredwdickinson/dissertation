@@ -149,7 +149,7 @@ def theoretical_density(s, q = 1.0, g = 1.0):
 
     return density
 
-def get_density(potential_type, s = None):
+def get_density(potential_type, s = None, c = 1/8):
     # Returns the range and density for given potential types.
     if (potential_type == "quartic"):
         if (s is None):
@@ -159,6 +159,8 @@ def get_density(potential_type, s = None):
         if (s is None):
             s = np.linspace(-2.125, 2.125, 1000)
         density = theoretical_density(s, q = 1, g = 0)
+    elif (potential_type == "wishart-laguerre"):
+        s, density = wishart_laguerre_density(c)
     else:
         raise NotImplementedError(f"Do not have potential {potential_type} in get_density().")
     
@@ -211,3 +213,9 @@ def wigner_surmise(s, beta):
             a = 262144/(729*np.pi**3); b = 64/(9*np.pi);
 
     return a*(s**beta)*np.exp(-b*s**2)
+
+def wishart_laguerre_density(c):
+    a = (1 - np.sqrt(c))**2; b = (1 + np.sqrt(c))**2
+    x = np.linspace(a, b, 1000)
+
+    return x, 1/(2*np.pi*c*x)*np.sqrt((x - a)*(b-x))
