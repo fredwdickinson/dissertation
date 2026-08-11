@@ -4,7 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 plt.style.use('dissertation.mplstyle')
 
-def plot_hist(ax, particles, num_bins = 100, with_limit = True, potential_name = None, c = None):
+def plot_hist(ax, particles, num_bins = 100, with_limit = True, potential_name = None, c = None, width = 1.5):
     """
     Histogram plotter.
     """
@@ -14,7 +14,7 @@ def plot_hist(ax, particles, num_bins = 100, with_limit = True, potential_name =
 
     if (with_limit):
         density_range, limiting_density = get_density(potential_name, c = c)
-        ax.plot(density_range, limiting_density, color = "red", lw = 1.5)
+        ax.plot(density_range, limiting_density, color = "red", lw = width)
 
     ax.grid(False)
     ax.set_yticks([0, 0.3])

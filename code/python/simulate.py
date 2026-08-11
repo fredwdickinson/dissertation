@@ -58,15 +58,32 @@ def make_tamed_pipeline(N, dt, potential_type, beta):
 
     return pipeline
 
-def make_implicit_pipeline(N, dt, potential_type, beta):
+def make_implicit_pipeline(N, dt, potential_type, beta, track_energy = False):
     noise_scale = np.sqrt(2.0*dt/(beta*N))
     potential_int = potential_ints[potential_type]
 
-    def pipeline(state):
-        next_x, newton_iters, mean_cg_iters = integrators.implicit_newton_step(state, dt, potential_int, noise_scale)
-        return next_x, {"newton_iters": newton_iters, "mean_cg_iters": mean_cg_iters}
-    
-    return pipeline
+    if (track_energy):
+        def pipeline(state):
+            next_x, newton_iters, mean_cg_iters, log_energy_x, log_energy_y, log_transition_x_y, log_transition_y_x, log_det_x, log_det_y = integrators.implicit_newton_step_with_energy(
+                state, dt, potential_int, beta, noise_scale, track_energy = track_energy)
+            
+            return next_x, {"newton_iters": newton_iters, "mean_cg_iters": mean_cg_iters,
+                            "log_energy_x": log_energy_x, "log_energy_y": log_energy_y,
+                            "log_transition_x_y": log_transition_x_y, "log_transition_y_x": log_transition_y_x,
+                            "log_det_x": log_det_x, "log_det_y": log_det_y}
+        
+        return pipeline
+
+    # NOTE This is not clean but a fine temp fix for investigating...
+    else:
+        def pipeline(state):
+            next_x, newton_iters, mean_cg_iters = integrators.implicit_newton_step(
+                state, dt, potential_int, beta, noise_scale)
+            
+            return next_x, {"newton_iters": newton_iters, "mean_cg_iters": mean_cg_iters}
+
+        return pipeline
+
 
 def make_maila_pipeline(N, dt, potential_type, beta):
     noise_scale = np.sqrt(2.0*dt/(beta*N))
@@ -180,7 +197,7 @@ def simulate_dbm(init, steps, step_pipeline):
 def analyse_trajectory(trajectory, num_steps, dt = None, track_snapshots = True, burn_in = None, snapshot_interval = 10,
                        track_accepts = False, track_crossings = False, step_star = None,
                        track_distance = False, grid = None, F_exact = None, distance_interval = 10, distance_type = "wasserstein",
-                       track_newton_info = False,
+                       track_newton_info = False, track_energy = False,
                        track_spacings = False, F_cdf = None):
     """ 
     Master observe function (combined all previous here). By default only track_snapshots is True.
@@ -225,6 +242,11 @@ def analyse_trajectory(trajectory, num_steps, dt = None, track_snapshots = True,
         newton_iters = []
         mean_cg_iters = []
         line_search_rejects = []
+
+    if track_energy:
+        log_energy_x = []; log_energy_y = []
+        log_transition_x_y = []; log_transition_y_x = []
+        log_det_x = []; log_det_y = []
         
     # Single pass through the generator.
     # Info is a dictionary: check keys. 
@@ -286,12 +308,26 @@ def analyse_trajectory(trajectory, num_steps, dt = None, track_snapshots = True,
             
             spacings.append(gaps)
 
+        if (track_energy):
+            if ("log_energy_x" in info):
+                log_energy_x.append(info["log_energy_x"])
+            if ("log_energy_y" in info):
+                log_energy_y.append(info["log_energy_y"])
+            if ("log_transition_x_y" in info):
+                log_transition_x_y.append(info["log_transition_x_y"])
+            if ("log_transition_y_x" in info):
+                log_transition_y_x.append(info["log_transition_y_x"])
+            if ("log_det_x" in info):
+                log_det_x.append(info["log_det_x"])
+            if ("log_det_y" in info):
+                log_det_y.append(info["log_det_y"])
+
     # End of trajectory loop, compile the dictionary and return.
     if track_snapshots:
-        results["snapshots"] = np.concatenate(snapshots).flatten()
+        results["snapshots"] = np.array(snapshots)
 
     if (track_spacings):
-        results["spacings"] = np.concatenate(spacings).flatten()
+        results["spacings"] = np.concatenate(spacings)
     
     if track_accepts:
         results["accepts"] = np.array(accepts)
@@ -314,6 +350,14 @@ def analyse_trajectory(trajectory, num_steps, dt = None, track_snapshots = True,
         results["newton_iters"] = np.array(newton_iters)
         results["mean_cg_iters"] = np.array(mean_cg_iters)
         results["line_search_rejects"] = np.array(line_search_rejects)
+
+    if track_energy:
+        results["log_energy_x"] = np.array(log_energy_x)
+        results["log_energy_y"] = np.array(log_energy_y)
+        results["log_transition_x_y"] = np.array(log_transition_x_y)
+        results["log_transition_y_x"] = np.array(log_transition_y_x)
+        results["log_det_x"] = np.array(log_det_x)
+        results["log_det_y"] = np.array(log_det_y)
 
     return results
 

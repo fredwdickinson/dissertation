@@ -1,4 +1,5 @@
 import numpy as np
+import pickle
 import python.densities as densities
 import python.integrators as integrators
 
@@ -42,7 +43,7 @@ def init_gue_eigenvalues(M, N):
 
     return eigenvalues
 
-def init_quartic_eigenvalues(M, N, T = 1.0, dt = 0.1):
+def init_quartic_eigenvalues(M, N, beta, T = 1.0, dt = 0.1):
     """
     Run the implicit sampler for T = 1 with small dt.
     """
@@ -53,10 +54,17 @@ def init_quartic_eigenvalues(M, N, T = 1.0, dt = 0.1):
     x = init_gue_eigenvalues(M, N)
 
     for _ in range(num_steps):
-        next_x, _, _ = integrators.implicit_newton_step(x, dt, potential_int = 2, noise_scale = noise_scale)
+        next_x, _, _ = integrators.implicit_newton_step(x, dt, potential_int = 2, beta = beta, noise_scale = noise_scale)
         x = next_x 
         
     return x
+
+def get_saved_init(M, N, potential_name):
+    filename = f"data/inits/{potential_name}/M{M}-N{N}.pkl"
+    with open(filename, "rb") as f:
+        init = pickle.load(f)
+
+    return init
 
 # ========================================================================================
 # Reconstructing matrices from the eigenvalues.

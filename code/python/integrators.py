@@ -28,7 +28,7 @@ def tamed_euler_step(x, coulomb, v_prime, dt, noise_scale):
     return x + drift*dt + noise_scale*noise
 
 @njit
-def implicit_newton_step(x, dt, potential_int, noise_scale,
+def implicit_newton_step(x, dt, potential_int, beta, noise_scale,
                          max_newton_iters = 50, newton_tol = 1e-6, cg_tol = 1e-9):
     """ 
     Performs the implicit step with Newton's method,
@@ -47,12 +47,12 @@ def implicit_newton_step(x, dt, potential_int, noise_scale,
     z = x + noise_scale*noise 
 
     for m in range(M):
-        current_x, trial_newton_iters, trial_avg_cg_iters = solve_newton_single(
+        next_state, trial_newton_iters, trial_avg_cg_iters = solve_newton_single(
             x[m], z[m], dt, potential_int, max_newton_iters, newton_tol, cg_tol,
             coulomb, hess, proposed_x
         )
 
-        next_x[m] = current_x 
+        next_x[m] = next_state
         newton_iters[m] = trial_newton_iters; mean_cg_iters[m] = trial_avg_cg_iters;
 
     return next_x, newton_iters, mean_cg_iters
@@ -71,7 +71,7 @@ def maila_newton_step(prev_x, dt, potential_int, beta, noise_scale,
     # Proposal.
     # NOTE Modify implicit_newton_step so that it returns the Coulomb information?
     proposed_x, newton_iters, mean_cg_iters = implicit_newton_step(
-                prev_x, dt, potential_int, noise_scale,
+                prev_x, dt, potential_int, beta, noise_scale,
                 max_newton_iters = max_newton_iters, newton_tol = newton_tol, cg_tol = cg_tol)
 
     # Now go through and accept/reject.
@@ -82,16 +82,16 @@ def maila_newton_step(prev_x, dt, potential_int, beta, noise_scale,
         v_double_prime_x = evaluate_force(x, potential_int, 2); v_double_prime_y = evaluate_force(y, potential_int, 2)
         log_rep_x = log_repulsion(x); log_rep_y = log_repulsion(y)
 
-        sum_H_x = np.sum(v_x)/2.0 - np.sum(log_rep_x) # Log repulsion already divides by N.
-        sum_H_y = np.sum(v_y)/2.0 - np.sum(log_rep_y)
+        sum_H_x = 0.5*np.sum(v_x) - np.sum(log_rep_x) # Log repulsion already divides by N.
+        sum_H_y = 0.5*np.sum(v_y) - np.sum(log_rep_y)
         log_pi_ratio = -beta*N*(sum_H_y - sum_H_x)
 
-        grad_H_x = 1/2*v_prime_x - coulomb_interaction(x)
-        grad_H_y = 1/2*v_prime_y - coulomb_interaction(y)
+        grad_H_x = 0.5*v_prime_x - coulomb_interaction(x)
+        grad_H_y = 0.5*v_prime_y - coulomb_interaction(y)
 
-        gaussian_part_y_x = -1*np.sum((x - y + dt*grad_H_x)**2)/(2*noise_scale**2)
-        gaussian_part_x_y = -1*np.sum((y - x + dt*grad_H_y)**2)/(2*noise_scale**2)
-
+        gaussian_part_x_y = -1.0*np.sum((y - x + dt*grad_H_y)**2)/(2*noise_scale**2)
+        gaussian_part_y_x = -1.0*np.sum((x - y + dt*grad_H_x)**2)/(2*noise_scale**2)
+        
         log_det_x = cholesky_log_det(x, beta, dt, v_double_prime_x)
         log_det_y = cholesky_log_det(y, beta, dt, v_double_prime_y)
         log_q_ratio = (log_det_x - log_det_y) + (gaussian_part_y_x - gaussian_part_x_y)
@@ -405,3 +405,68 @@ def mala_step_wishart(x, dt, potential_int, current_coulomb, current_H_N, beta, 
             total_accepts += 1
 
     return next_x, next_coulomb, next_H_N, total_accepts/M, total_crossing_rejects/M, total_negativity_rejects/M
+
+# 
+
+@njit
+def implicit_newton_step_with_energy(x, dt, potential_int, beta, noise_scale,
+                         max_newton_iters = 50, newton_tol = 1e-6, cg_tol = 1e-9,
+                         track_energy = True):
+    """ 
+    Performs the implicit step with Newton's method,
+        x_(k+1) = x_k - alpha_k*hess(g_k)^-1*grad (g_k),
+        where g_k is the function being minimised.
+    """
+
+    M, N = x.shape
+    next_x = np.zeros_like(x)
+
+    newton_iters = np.zeros(M); mean_cg_iters = np.zeros(M, dtype = float); # Counters.
+    coulomb = np.zeros(N); hess = np.zeros((N, N)); proposed_x = np.zeros(N) # All act as temp.
+
+    # Added for tracking the energy.
+    log_energy_x = np.zeros(M); log_energy_y = np.zeros(M);
+    log_q_x_y = np.zeros(M); log_q_y_x = np.zeros(M);
+    log_det_x = np.zeros(M); log_det_y = np.zeros(M);
+
+    # Noise, included in the solve.
+    noise = np.random.normal(0.0, 1.0, x.shape)
+    z = x + noise_scale*noise 
+
+    for m in range(M):
+        next_state, trial_newton_iters, trial_avg_cg_iters = solve_newton_single(
+            x[m], z[m], dt, potential_int, max_newton_iters, newton_tol, cg_tol,
+            coulomb, hess, proposed_x
+        )
+
+        next_x[m] = next_state
+        newton_iters[m] = trial_newton_iters; mean_cg_iters[m] = trial_avg_cg_iters;
+
+        if (track_energy):
+            current = x[m]
+            v_x = evaluate_force(current, potential_int, 0); v_y = evaluate_force(next_state, potential_int, 0)
+            log_rep_x = log_repulsion(current); log_rep_y = log_repulsion(next_state) # Divides by N.
+            H_N_x = 0.5*np.sum(v_x) - np.sum(log_rep_x)
+            H_N_y = 0.5*np.sum(v_y) - np.sum(log_rep_y)
+
+            v_prime_x = evaluate_force(current, potential_int, 1); v_prime_y = evaluate_force(next_state, potential_int, 1)
+            coulomb_x = coulomb_interaction(current); coulomb_y = coulomb_interaction(next_state); # Also divides by N.
+            grad_H_x = 0.5*v_prime_x - coulomb_x ; grad_H_y = 0.5*v_prime_y - coulomb_y
+
+            pi_x = -beta*N*H_N_x; pi_y = -beta*N*H_N_y 
+            transition_x_y = (-beta*N/(4*dt))*np.sum((next_state - current + dt*grad_H_y)**2)
+            transition_y_x = (-beta*N/(4*dt))*np.sum((current - next_state + dt*grad_H_x)**2)
+
+            v_double_prime_x = evaluate_force(current, potential_int, 2)
+            v_double_prime_y = evaluate_force(next_state, potential_int, 2)
+            det_x = cholesky_log_det(current, beta, dt, v_double_prime_x)
+            det_y = cholesky_log_det(next_state, beta, dt, v_double_prime_y)
+
+            log_energy_x[m] = pi_x 
+            log_energy_y[m] = pi_y 
+            log_q_x_y[m] = transition_x_y
+            log_q_y_x[m] = transition_y_x   
+            log_det_x[m] = det_x
+            log_det_y[m] = det_y
+
+    return next_x, newton_iters, mean_cg_iters, log_energy_x, log_energy_y, log_q_x_y, log_q_y_x, log_det_x, log_det_y
