@@ -84,6 +84,12 @@ def potential_quartic(x):
 def potential_quad_quartic(x):
     return (x**2)/2.0 + (x**4)/4.0
 
+@njit
+def potential_cubic_quartic(x):
+    # Need to add to gradient and Hessian information if wanting to simulate.
+    t = 1.5
+    return (x**4)/4.0 + t*(x**3)/3.0
+
 #
 # First derivatives for e.g. drift term.
 #

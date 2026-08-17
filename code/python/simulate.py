@@ -382,6 +382,7 @@ def target_dt(method, init, burn_steps, total_steps, potential_name, beta, dt_in
         current_y = np.random.normal(0, 1, x.shape)
 
     # Run the burn in.
+    # NOTE now obselete since running from equilibrium.
     for _ in range(burn_steps):
         if (method == "hmc"):
             next_x, next_y, next_coulomb, next_H_N, accepts, _ = integrators.hmc_step(
@@ -419,12 +420,16 @@ def target_dt(method, init, burn_steps, total_steps, potential_name, beta, dt_in
             next_x, accepts, _, _, _  = integrators.maimla_newton_step(
                 x, dt, potential_int, beta, noise_scale, newton_tol = newton_tol)
 
+        elif (method == "maila"):
+            next_x, accepts, _, _ = integrators.maila_newton_step(
+                x, dt, potential_int, beta, noise_scale, newton_tol = newton_tol)
+
         # Update dt and then all parameters.
         dt_next = dt + dt*(accepts - target)/((step_idx + 1)**kappa)
         dt = dt_next
 
         x = next_x
-        if (method != "maimla"):
+        if (method not in["maimla", "maila"]):
             current_coulomb = next_coulomb; current_H_N = next_H_N; 
 
         # Save history.
