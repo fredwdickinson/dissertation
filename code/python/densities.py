@@ -4,7 +4,9 @@ from python.forces import get_force_func, evaluate_force
 potential_ints = {
     "quadratic": 0,
     "quad-quartic": 1,
-    "quartic": 2
+    "quartic": 2,
+    "wishart-laguerre": 3,
+    "claeys": 4
 }
 
 """
@@ -52,6 +54,33 @@ def orthogonal_polys(N, potential_func, grid):
 
     return pis, c_sqrs
 
+def stieltjes_recurrence(N, potential_func, grid):
+    """
+    Stable construction of the 3-term recurrence for monic orthogonal
+    polynomials w.r.t. exp(-N*V) via the discretized Stieltjes procedure.
+    pi_{k+1}(x) = (x - a_k) pi_k(x) - b_k pi_{k-1}(x)
+    """
+    weight = np.exp(-N * potential_func(grid))
+    pis = np.zeros((N, len(grid)))
+    a = np.zeros(N)
+    b = np.zeros(N)
+    c_sqrs = np.zeros(N)
+
+    pis[0] = np.ones_like(grid)
+    c_sqrs[0] = numerical_int(pis[0]**2 * weight, grid)
+    a[0] = numerical_int(grid * pis[0]**2 * weight, grid) / c_sqrs[0]
+
+    pi_prev = np.zeros_like(grid)
+    for k in range(N - 1):
+        pi_next = (grid - a[k]) * pis[k] - (b[k] * pi_prev if k > 0 else 0.0)
+        c_sqrs[k+1] = numerical_int(pi_next**2 * weight, grid)
+        a[k+1] = numerical_int(grid * pi_next**2 * weight, grid) / c_sqrs[k+1]
+        b[k+1] = c_sqrs[k+1] / c_sqrs[k]
+        pi_prev = pis[k]
+        pis[k+1] = pi_next
+
+    return pis, c_sqrs
+
 def construct_kernel(N, potential_func, grid, pis, c_sqrs):
     """ 
     Construct K_N by (a) calculating the wavefunctions and then (b)
@@ -75,9 +104,10 @@ def compute_exact_cdf(N, potential, grid, cdf_tol = 0.05):
     See (2.5) in Li and Menon.
     """
     
-    if (N <= 30):
+    if (N <= 50):
         potential_func = get_force_func(potential_ints[potential], 0)
-        pis, c_sqrs = orthogonal_polys(N, potential_func, grid)
+        # pis, c_sqrs = orthogonal_polys(N, potential_func, grid)
+        pis, c_sqrs = stieltjes_recurrence(N, potential_func, grid)
         K_N = construct_kernel(N, potential_func, grid, pis, c_sqrs)
         rho_N = np.diagonal(K_N)/N
     else:
@@ -151,14 +181,20 @@ def theoretical_density(s, q = 1.0, g = 1.0):
 
 def get_density(potential_type, s = None, c = 1/8):
     # Returns the range and density for given potential types.
+    resolution = 5000
+    
     if (potential_type == "quartic"):
         if (s is None):
-            s = np.linspace(-1.65, 1.65, 1000)
+            s = np.linspace(-1.8, 1.8, resolution)
+        
         density = theoretical_density(s, q = 0, g = 1)
+
     elif (potential_type == "quadratic"):
         if (s is None):
-            s = np.linspace(-2.125, 2.125, 1000)
+            s = np.linspace(-2.25, 2.25, resolution)
         density = theoretical_density(s, q = 1, g = 0)
+    
+
     elif (potential_type == "wishart-laguerre"):
         s, density = wishart_laguerre_density(c)
     else:

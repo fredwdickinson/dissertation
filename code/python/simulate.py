@@ -7,7 +7,8 @@ potential_ints = {
     "quadratic": 0,
     "quad-quartic": 1,
     "quartic": 2,
-    "wishart-laguerre": 3
+    "wishart-laguerre": 3,
+    "claeys": 4
 }
 
 def get_pipeline(method, **kwargs):

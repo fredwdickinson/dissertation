@@ -23,6 +23,15 @@ def get_force_func(potential_int, deriv_int):
                     return grad_quartic
                 case 2:
                     return hess_quartic
+
+        case 4:
+            match deriv_int:
+                case 0:
+                    return potential_claeys
+                case 1:
+                    return grad_claeys
+                case 2:
+                    return hess_claeys
         case _:
             raise ValueError(f"Unsupported potential integer {potential_int}.")
         
@@ -67,6 +76,17 @@ def evaluate_force(x, potential_int, deriv_int, c = 1):
                     return grad_wishart(x, c)
                 case _:
                     raise ValueError("Unsupported deriv_int.")
+
+        case 4:
+            match deriv_int:
+                case 0:
+                    return potential_claeys(x)
+                case 1:
+                    return grad_claeys(x)
+                case 2:
+                    return hess_claeys(x)
+                case _:
+                    raise ValueError("Unsupported deriv_int.")
         case _:
             raise ValueError(f"Unsupported potential name {potential_int}.")
         
@@ -90,6 +110,10 @@ def potential_cubic_quartic(x):
     t = 1.5
     return (x**4)/4.0 + t*(x**3)/3.0
 
+@njit
+def potential_claeys(x):
+    return (x**4)/20.0 - (4.0*x**3)/15.0 + (x**2)/5.0 + (8.0*x)/5.0
+
 #
 # First derivatives for e.g. drift term.
 #
@@ -107,6 +131,11 @@ def grad_quartic(x):
 def grad_quad_quartic(x):
     return x + x**3
 
+@njit
+def grad_claeys(x):
+    return (x**3)/5.0 - (4.0*x**2)/5.0 + (2.0*x)/5.0 + 8.0/5.0
+
+
 #
 # Second derivatives for Newton solver and ... NOTE.
 #
@@ -122,6 +151,10 @@ def hess_quartic(x):
 @njit
 def hess_quad_quartic(x):
     return 1.0 + 3.0*(x**2)
+
+@njit
+def hess_claeys(x):
+    return (3.0*x**2)/5.0 - (8.0*x)/5.0 + 2.0/5.0
 
 #
 # Different potentials for Wishart-Laguerre ensembles.
